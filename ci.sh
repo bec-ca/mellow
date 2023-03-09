@@ -5,7 +5,7 @@
 ./download-pkg.sh diffo https://github.com/bec-ca/diffo/archive/refs/tags/v1.0.0.tar.gz
 ./download-pkg.sh yasf https://github.com/bec-ca/yasf/archive/refs/tags/v1.0.0.tar.gz
 
-for file in mellow/*.cpp; do
-  echo "Compiling $file..."
-  clang++ -c $(cat compile_flags.txt) $file
-done
+./bootstrap.sh
+
+./build/bootstrap/mellow fetch
+./build/bootstrap/mellow build
