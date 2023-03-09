@@ -205,7 +205,7 @@ OrError<Unit> fetch_external_packges(const bee::FilePath& output_dir)
       seen_packages.insert(pkg.name);
 
       auto loc = pkg.location.has_value() ? pkg.location->hum() : "";
-      print_line("fetching $...", pkg.name);
+      print_line("Fetching $...", pkg.name);
       bail_unit(bee::FileSystem::mkdirs(target_dir));
       auto dest = target_dir / pkg.name;
 
@@ -218,7 +218,13 @@ OrError<Unit> fetch_external_packges(const bee::FilePath& output_dir)
         auto download_file = (pkg_tmp_dir / (pkg.name + ".tar.gz")).to_string();
         bail_unit(bee::SubProcess::run(
           {.cmd = "curl",
-           .args = {*pkg.url, "--location", "-o", download_file}}));
+           .args = {
+             *pkg.url,
+             "--location",
+             "--silent",
+             "--show-error",
+             "--output",
+             download_file}}));
         bail_unit(bee::SubProcess::run(
           {.cmd = "tar",
            .args = {"-C", pkg_tmp_dir.to_string(), "-xzf", download_file}}));
