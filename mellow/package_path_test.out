@@ -1,0 +1,55 @@
+================================================================================
+Test: basic
+package_dir:. package_path:/foo
+package_dir.to_filesystem:./foo
+package_dir.of_filesystem:Ok(/foo)
+
+================================================================================
+Test: of_filesystem
+of_filesystem(".", "./foo.out") -> Ok(/foo.out)
+of_filesystem("./", "./foo.out") -> Ok(/foo.out)
+of_filesystem("./core", "./core/foo.out") -> Ok(/foo.out)
+of_filesystem("./core", "./core/bar/foo.out") -> Ok(/bar/foo.out)
+of_filesystem( "/usr/bin/home/user/foo", "/usr/bin/home/user/foo/core/bar/foo.out") -> Ok(/core/bar/foo.out)
+of_filesystem("./foo", "./bar") -> Error(Path './bar' is not a child of the root_package './foo', foo bar)
+of_filesystem("/foo", "./foo/bar") -> Error(of_filesystem() requires that neither inputs are root or that both are.)
+
+================================================================================
+Test: to_filesystem
+to_filesystem("/foo/bar", "foo") -> foo/foo/bar
+to_filesystem("/", "foo") -> foo
+to_filesystem("/", "./") -> ./
+to_filesystem("/foo", "./") -> ./foo
+
+================================================================================
+Test: of_string
+PackagePath::of_string("/foo") -> Ok(/foo)
+PackagePath::of_string("foo") -> Error(Package name must start with a slash)
+PackagePath::of_string("///foo") -> Ok(/foo)
+PackagePath::of_string("/") -> Ok(/)
+PackagePath::of_string("/foo/bar") -> Ok(/foo/bar)
+PackagePath::of_string("/foo/../bar") -> Error('..' is not allowed in package name)
+
+================================================================================
+Test: append
+append("/foo/bar", "foo") -> /foo/bar/foo
+append("/foo/bar", "/foo") -> /foo
+append("/foo/bar", "./foo") -> /foo/bar/foo
+append("/foo/bar", "././foo") -> /foo/bar/foo
+append("/foo/bar", "../foo") -> /foo/bar/../foo
+
+================================================================================
+Test: relative_to
+append("/foo/bar", "/foo") -> bar
+append("/foo/bar", "/foo/boo") -> /foo/bar
+append("/foo/bar", "/") -> foo/bar
+append("/foo/bar", "/foo/bar") -> ./
+
+================================================================================
+Test: remove_suffix
+remove_suffix("/foo/bar", "/other/foo/bar") -> /other
+remove_suffix("/foo/bar", "/other/bar") -> /other
+remove_suffix("/foo/bar", "/other/foo") -> /other/foo
+remove_suffix("/foo/bar", "/other") -> /other
+remove_suffix("/foo/bar", "/") -> /
+

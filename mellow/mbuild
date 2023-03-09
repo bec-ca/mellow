@@ -1,0 +1,351 @@
+cpp_library:
+  name: build_config
+  sources: build_config.cpp
+  headers: build_config.hpp
+  libs:
+    /bee/file_reader
+    /bee/file_writer
+    /bee/string_util
+    /bee/util
+    /yasf/config_parser
+    /yasf/value
+    generated_build_config
+
+cpp_library:
+  name: build_engine
+  sources: build_engine.cpp
+  headers: build_engine.hpp
+  libs:
+    /bee/error
+    /bee/file_path
+    /bee/file_reader
+    /bee/file_writer
+    /bee/filesystem
+    /bee/format_filesystem
+    /bee/format_set
+    /bee/format_vector
+    /bee/os
+    /bee/string_util
+    /bee/sub_process
+    /bee/util
+    /diffo/diff
+    /yasf/cof
+    build_config
+    build_normalizer
+    build_task
+    generate_build_config
+    generated_mbuild_parser
+    package_path
+    task_manager
+
+cpp_binary:
+  name: build_hash_yasf
+  libs: build_hash_yasf_main
+
+cpp_library:
+  name: build_hash_yasf_main
+  sources: build_hash_yasf_main.cpp
+  libs:
+    /yasf/core_types
+    /yasf/generator
+    /yasf/generator_main_lib
+
+cpp_library:
+  name: build_normalizer
+  sources: build_normalizer.cpp
+  headers: build_normalizer.hpp
+  libs:
+    /bee/error
+    /bee/file_path
+    /bee/filesystem
+    /bee/util
+    generated_mbuild_parser
+    mbuild_parser
+    normalized_rule
+    package_path
+
+cpp_library:
+  name: build_rules
+  sources: build_rules.cpp
+  headers: build_rules.hpp
+  libs:
+    /bee/util
+    /yasf/cof
+    /yasf/location
+    generated_mbuild_parser
+    package_path
+    rule_templates
+
+cpp_library:
+  name: build_task
+  sources: build_task.cpp
+  headers: build_task.hpp
+  libs:
+    /bee/file_path
+    /bee/format
+    hash_checker
+    package_path
+    progress_ui
+    thread_runner
+
+cpp_library:
+  name: config_command
+  sources: config_command.cpp
+  headers: config_command.hpp
+  libs:
+    /command/cmd
+    /command/command_builder
+    build_config
+    generate_build_config
+
+cpp_binary:
+  name: gen_build_config
+  libs: gen_build_config_main
+
+cpp_library:
+  name: gen_build_config_main
+  sources: gen_build_config_main.cpp
+  libs:
+    /yasf/generator
+    /yasf/generator_main_lib
+
+gen_rule:
+  name: gen_build_hash_yasf
+  binary: build_hash_yasf
+  flags:
+    gen
+    --base-name
+    generated_build_hash
+    --output-dir
+    .
+  outputs:
+    generated_build_hash.cpp
+    generated_build_hash.hpp
+
+cpp_library:
+  name: genbuild
+  sources: genbuild.cpp
+  headers: genbuild.hpp
+  libs:
+    /bee/error
+    /bee/file_reader
+    /bee/filesystem
+    /bee/format_filesystem
+    /bee/format_set
+    /bee/format_vector
+    /bee/sort
+    /bee/string_util
+    /bee/util
+    generated_mbuild_parser
+    mbuild_parser
+    package_path
+
+cpp_library:
+  name: generate_build_config
+  sources: generate_build_config.cpp
+  headers: generate_build_config.hpp
+  libs:
+    /bee/error
+    /bee/file_writer
+    /bee/format_vector
+    /bee/string_util
+    /bee/util
+    build_config
+    generated_build_config
+
+gen_rule:
+  name: generate_mbuild_parser
+  binary: mbuild_parser_generator
+  flags:
+    gen
+    --base-name
+    generated_mbuild_parser
+    --output-dir
+    .
+  outputs:
+    generated_mbuild_parser.cpp
+    generated_mbuild_parser.hpp
+
+gen_rule:
+  name: generate_yasf_build_config
+  binary: gen_build_config
+  flags:
+    gen
+    --base-name
+    generated_build_config
+    --output-dir
+    .
+  outputs:
+    generated_build_config.cpp
+    generated_build_config.hpp
+
+cpp_library:
+  name: generated_build_config
+  sources: generated_build_config.cpp
+  headers: generated_build_config.hpp
+  libs:
+    /bee/error
+    /bee/format
+    /bee/util
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/to_stringable_mixin
+
+cpp_library:
+  name: generated_build_hash
+  sources: generated_build_hash.cpp
+  headers: generated_build_hash.hpp
+  libs:
+    /bee/error
+    /bee/format
+    /bee/time
+    /bee/util
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/to_stringable_mixin
+
+cpp_library:
+  name: generated_mbuild_parser
+  sources: generated_mbuild_parser.cpp
+  headers: generated_mbuild_parser.hpp
+  libs:
+    /bee/error
+    /bee/format
+    /bee/util
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/to_stringable_mixin
+
+cpp_library:
+  name: hash_checker
+  sources: hash_checker.cpp
+  headers: hash_checker.hpp
+  libs:
+    /bee/error
+    /bee/file_path
+    /bee/file_reader
+    /bee/file_writer
+    /bee/filesystem
+    /bee/format_filesystem
+    /bee/simple_checksum
+    /bee/string_util
+    /yasf/cof
+    generated_build_hash
+    package_path
+
+cpp_library:
+  name: mbuild_parser
+  sources: mbuild_parser.cpp
+  headers: mbuild_parser.hpp
+  libs:
+    /bee/error
+    /bee/file_path
+    /bee/file_reader
+    /bee/file_writer
+    /yasf/config_parser
+    build_rules
+    generated_mbuild_parser
+
+cpp_binary:
+  name: mbuild_parser_generator
+  libs: mbuild_parser_generator_main
+
+cpp_library:
+  name: mbuild_parser_generator_main
+  sources: mbuild_parser_generator_main.cpp
+  libs:
+    /yasf/generator
+    /yasf/generator_main_lib
+    /yasf/record
+
+cpp_binary:
+  name: mellow
+  libs: mellow_main
+
+cpp_library:
+  name: mellow_main
+  sources: mellow_main.cpp
+  libs:
+    /bee/file_reader
+    /bee/file_writer
+    /bee/filesystem
+    /bee/format
+    /bee/sort
+    /bee/util
+    /command/command_builder
+    /command/group_builder
+    build_engine
+    config_command
+    genbuild
+    mbuild_parser
+
+cpp_library:
+  name: normalized_rule
+  sources: normalized_rule.cpp
+  headers: normalized_rule.hpp
+  libs:
+    /yasf/location
+    build_rules
+    package_path
+
+cpp_library:
+  name: package_path
+  sources: package_path.cpp
+  headers: package_path.hpp
+  libs:
+    /bee/error
+    /bee/file_path
+    /bee/format_vector
+    /bee/string_util
+    /bee/util
+
+cpp_test:
+  name: package_path_test
+  sources: package_path_test.cpp
+  libs:
+    /bee/format
+    /bee/format_filesystem
+    /bee/testing
+    package_path
+  output: package_path_test.out
+
+cpp_library:
+  name: progress_ui
+  sources: progress_ui.cpp
+  headers: progress_ui.hpp
+  libs:
+    /bee/file_descriptor
+    /bee/time
+    package_path
+
+cpp_library:
+  name: rule_templates
+  headers: rule_templates.hpp
+  libs:
+    /bee/util
+    /yasf/location
+    package_path
+
+cpp_library:
+  name: task_manager
+  sources: task_manager.cpp
+  headers: task_manager.hpp
+  libs: build_task
+
+cpp_library:
+  name: thread_runner
+  sources: thread_runner.cpp
+  headers: thread_runner.hpp
+  libs:
+    /bee/format
+    /bee/queue
+
+cpp_test:
+  name: thread_runner_test
+  sources: thread_runner_test.cpp
+  libs:
+    /bee/format
+    /bee/testing
+    thread_runner
+  output: thread_runner_test.out
+

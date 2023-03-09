@@ -1,0 +1,10 @@
+* sub directories
+* external libraries
+* configuring configure.sh style
+* build server that watches changed files
+* faster diff
+* open source
+* support generated files not in the repo
+* better enforce that all lib deps are listed in the mbuild file
+* tool to auto update mbuild file
+* generate a makefile for bootstraping
