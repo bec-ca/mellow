@@ -1,0 +1,27 @@
+OUTPUT_DIR ?= ./build/bootstrap
+EP = ./build/external-packages
+
+CXXFLAGS+=-std=c++20 -O3 -iquote . -I${EP}
+LDFLAGS+=-lpthread -pthread
+
+DIRS=mellow $(EP)/bee $(EP)/yasf $(EP)/command/ $(EP)/diffo/
+SOURCES=$(shell find $(DIRS) | grep '\.cpp$$' | grep -v test | grep -v main | grep -v 'sys\.[hc]pp') mellow/mellow_main.cpp
+OBJECTS=$(patsubst %.cpp, $(OUTPUT_DIR)/%.o, $(SOURCES))
+DEPS=$(patsubst %, %.d, $(OBJECTS))
+MELLOW=$(OUTPUT_DIR)/mellow/mellow
+
+.PHONY: all
+
+
+all: $(MELLOW)
+
+-include $(DEPS)
+
+$(MELLOW): $(OBJECTS)
+	@echo "Linking $@..."
+	@$(CXX) $(OBJECTS) $(CXXFLAGS) $(LDFLAGS) -o "$@"
+
+$(OUTPUT_DIR)/%.o: %.cpp Makefile
+	@echo "Compiling $<..."
+	@mkdir -p `dirname $@`
+	@$(CXX) $(CXXFLAGS) -c "$<" -MMD -MF "$@.d" -o "$@"
