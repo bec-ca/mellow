@@ -5,7 +5,7 @@ Mellow is a build system for C++
 ## Requirements
 
 * make
-* g++ or clang
+* A version of gcc or clang that supports C++20
 
 ## Usage
 
