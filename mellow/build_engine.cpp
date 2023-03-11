@@ -123,14 +123,15 @@ struct RunCommand {
       }
     };
 
-    bail_unit(FileSystem::mkdirs(stdout_path.parent_path()));
-    bail_unit(FileSystem::mkdirs(stderr_path.parent_path()));
+    bail_unit(FileSystem::mkdirs(stdout_path.parent()));
+    bail_unit(FileSystem::mkdirs(stderr_path.parent()));
     if (verbose) { print_line("Running $ $...", cmd, args); }
-    auto ret = SubProcess::spawn(
-      {.cmd = cmd,
-       .args = args,
-       .stdout_spec = SubProcess::Filename{stdout_path.to_std_path()},
-       .stderr_spec = SubProcess::Filename{stderr_path.to_std_path()}});
+    auto ret = SubProcess::spawn({
+      .cmd = cmd,
+      .args = args,
+      .stdout_spec = stdout_path,
+      .stderr_spec = stderr_path,
+    });
 
     if (ret.is_error()) { return tag_error(ret.error()); }
     auto& pid = ret.value();
@@ -271,9 +272,7 @@ struct RunGenRule {
       FileSystem::remove(output.run_dir_path);
     }
     bail_unit(SubProcess::run(
-      {.cmd = binary.to_std_path(),
-       .args = flags,
-       .cwd = run_dir.to_std_path()}));
+      {.cmd = binary.to_std_path(), .args = flags, .cwd = run_dir}));
     for (const auto& output : output_info) {
       if (!FileSystem::exists(output.run_dir_path)) {
         return bee::Error::format(
@@ -345,7 +344,7 @@ struct RunSystemLib {
 
     auto output_path = system_lib_config.to_filesystem(root_build_dir);
 
-    bail_unit(FileSystem::mkdirs(output_path.parent_path()));
+    bail_unit(FileSystem::mkdirs(output_path.parent()));
     bail_unit(FileWriter::save_file(output_path, content));
 
     return bee::unit;
@@ -371,7 +370,7 @@ struct RunCppRule {
     if (!_main_output.has_value()) { return bee::ok(); }
     auto& main_output = *_main_output;
 
-    bail_unit(FileSystem::mkdirs(main_output.parent_path()));
+    bail_unit(FileSystem::mkdirs(main_output.parent()));
 
     auto fp_set_to_string_vec = [](const std::set<FilePath>& s) {
       return bee::map_vector(

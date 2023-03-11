@@ -116,7 +116,7 @@ FilePath get_repo_root_dir(FilePath dir)
 {
   while (true) {
     if (bee::FileSystem::exists(dir / ".git")) { return dir; }
-    auto parent = dir.parent_path();
+    auto parent = dir.parent();
     if (!bee::FileSystem::exists(parent / "mbuild") || dir == parent) {
       return dir;
     } else {

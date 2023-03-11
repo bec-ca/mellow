@@ -49,7 +49,7 @@ bee::OrError<bee::Unit> write_task_hash(
   const FilePath& filename, const gbh::TaskHash& task_hash)
 {
   auto content = yasf::Cof::serialize(task_hash);
-  bail_unit(bee::FileSystem::mkdirs(filename.parent_path()));
+  bail_unit(bee::FileSystem::mkdirs(filename.parent()));
   return bee::FileWriter::save_file(filename, content);
 }
 

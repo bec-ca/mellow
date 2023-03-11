@@ -198,7 +198,7 @@ bee::FilePath PackagePath::remove_suffix(const bee::FilePath& input_path) const
   auto path = input_path;
   auto parts = _parts;
   while (!parts.empty() && path.filename() == parts.back()) {
-    path = path.parent_path();
+    path = path.parent();
     parts.pop_back();
   }
   return path;

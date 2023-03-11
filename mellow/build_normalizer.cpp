@@ -47,7 +47,7 @@ OrError<vector<FilePath>> find_package_dirs(
     concat(output, subdirs);
   }
   for (const auto& p : regular_files.regular_files) {
-    if (p.filename() == mbuild_name) { output.push_back(p.parent_path()); }
+    if (p.filename() == mbuild_name) { output.push_back(p.parent()); }
   }
 
   return output;
