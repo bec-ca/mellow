@@ -37,7 +37,8 @@ if [ -z ${FORCE_BOOTSTRAP:-} ]; then
   fi
 fi
 
-if check_mellow "./build/bootstrap/mellow/mellow"; then
+bootstrap_path="./build/bootstrap/mellow/mellow"
+if check_mellow "$bootstrap_path"; then
   exit 0
 fi
 
