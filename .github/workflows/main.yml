@@ -10,7 +10,7 @@ jobs:
       - name: Install clang-format16
         run: |
             sudo apt-get update
-            apt-get search clang-format
+            apt-cache search clang-format
             sudo apt-get install clang-format-16
       - name: Run tests
         run: ./ci.sh
