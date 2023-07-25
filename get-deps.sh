@@ -1,5 +1,7 @@
 #!/bin/bash -eu
 
+rm -rf build/external-packages
+
 ./download-pkg.sh bee https://github.com/bec-ca/bee/archive/refs/tags/v2.2.1.tar.gz
 ./download-pkg.sh command https://github.com/bec-ca/command/archive/refs/tags/v2.1.0.tar.gz
 ./download-pkg.sh diffo https://github.com/bec-ca/diffo/archive/refs/tags/v2.0.0.tar.gz
