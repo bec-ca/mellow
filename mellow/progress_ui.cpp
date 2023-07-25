@@ -1,12 +1,10 @@
 #include "progress_ui.hpp"
 
-#include "bee/file_descriptor.hpp"
-
 #include <iostream>
 #include <mutex>
 
-using bee::format;
-using bee::print_line;
+#include "bee/fd.hpp"
+
 using bee::Time;
 using std::lock_guard;
 using std::make_shared;
@@ -38,9 +36,7 @@ bool TaskProgress::done() const { return _done; }
 // ProgressUI
 //
 
-ProgressUI::ProgressUI()
-    : _is_tty(bee::FileDescriptor::stdout_filedesc()->is_tty())
-{}
+ProgressUI::ProgressUI() : _is_tty(bee::FD::stdout_filedesc()->is_tty()) {}
 ProgressUI::~ProgressUI() {}
 
 TaskProgress::ptr ProgressUI::add_task(const PackagePath& name)
@@ -78,8 +74,7 @@ void ProgressUI::task_done(const TaskProgress::ptr& task, bool cached)
   _finished_tasks++;
   _running_tasks--;
   if (!_is_tty && !cached) {
-    print_line(
-      "$ $ ($/$)", task->name(), took, _finished_tasks, _all_tasks.size());
+    P("$ {.2} ($/$)", task->name(), took, _finished_tasks, _all_tasks.size());
   }
   task->set_done();
   _remove_running_task(task);
@@ -121,16 +116,16 @@ void ProgressUI::_show_running_tasks()
     }
     will_show.push_back(line);
   }
-  will_show.push_back(format(
-    "Todo:$/$ Ran:$ Cached:$",
-    _all_tasks.size() - _finished_tasks,
-    _all_tasks.size(),
-    _finished_tasks - _cached_tasks,
-    _cached_tasks));
+  will_show.push_back(
+    F("Todo:$/$ Ran:$ Cached:$",
+      _all_tasks.size() - _finished_tasks,
+      _all_tasks.size(),
+      _finished_tasks - _cached_tasks,
+      _cached_tasks));
 
   string buffer;
   // move cursor back up and hide it
-  buffer += format("\x1b[$A\x1b[?25l", _shown_lines.size());
+  buffer += F("\x1b[$A\x1b[?25l", _shown_lines.size());
   for (int i = 0; i < int(will_show.size()) || i < int(_shown_lines.size());
        i++) {
     string line;
@@ -149,7 +144,7 @@ void ProgressUI::_show_running_tasks()
   // leave an empty line at the beginning
   buffer += "\x1b[?25h"; // show cursor again
 
-  bee::FileDescriptor::stdout_filedesc()->write(buffer);
+  bee::FD::stdout_filedesc()->write(buffer);
   _shown_lines = will_show;
 }
 

@@ -1,13 +1,13 @@
+#include <string>
+
 #include "package_path.hpp"
 
 #include "bee/format.hpp"
 #include "bee/format_filesystem.hpp"
 #include "bee/testing.hpp"
 
-#include <string>
-
 using bee::FilePath;
-using bee::print_line;
+
 using std::string;
 
 namespace mellow {
@@ -17,12 +17,12 @@ TEST(basic)
 {
   auto root_package_dir = FilePath::of_string(".");
   must(package_path, PackagePath::of_string("/foo"));
-  print_line("package_dir:$ package_path:$", root_package_dir, package_path);
+  P("package_dir:$ package_path:$", root_package_dir, package_path);
   auto to_filesystem = package_path.to_filesystem(root_package_dir);
-  print_line("package_dir.to_filesystem:$", to_filesystem);
+  P("package_dir.to_filesystem:$", to_filesystem);
   auto of_filesystem =
     PackagePath::of_filesystem(root_package_dir, to_filesystem);
-  print_line("package_dir.of_filesystem:$", of_filesystem);
+  P("package_dir.of_filesystem:$", of_filesystem);
 }
 
 TEST(of_filesystem)

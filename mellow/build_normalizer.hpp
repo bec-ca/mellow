@@ -1,13 +1,13 @@
 #pragma once
 
+#include <filesystem>
+#include <set>
+#include <string>
+
 #include "normalized_rule.hpp"
 #include "package_path.hpp"
 
 #include "bee/error.hpp"
-
-#include <filesystem>
-#include <set>
-#include <string>
 
 namespace mellow {
 

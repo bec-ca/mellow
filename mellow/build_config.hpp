@@ -1,10 +1,10 @@
 #pragma once
 
-#include "yasf/value.hpp"
+#include <filesystem>
 
 #include "generated_build_config.hpp"
 
-#include <filesystem>
+#include "yasf/value.hpp"
 
 namespace mellow {
 
@@ -27,8 +27,7 @@ struct BuildConfig {
   static bee::OrError<BuildConfig> load_from_file(
     const std::filesystem::path& filename);
 
-  bee::OrError<bee::Unit> write_to_file(
-    const std::filesystem::path& filename) const;
+  bee::OrError<> write_to_file(const std::filesystem::path& filename) const;
 
   bc::Cpp cpp_config() const;
 

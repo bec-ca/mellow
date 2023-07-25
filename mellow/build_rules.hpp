@@ -1,11 +1,12 @@
 #pragma once
 
+#include <variant>
+
 #include "generated_mbuild_parser.hpp"
 #include "package_path.hpp"
 #include "rule_templates.hpp"
-#include "yasf/location.hpp"
 
-#include <variant>
+#include "yasf/location.hpp"
 
 namespace mellow {
 

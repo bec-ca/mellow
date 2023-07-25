@@ -1,6 +1,9 @@
 #include "task_manager.hpp"
 
-namespace fs = std::filesystem;
+#include "package_path.hpp"
+
+#include "bee/string_util.hpp"
+
 using std::make_shared;
 using std::shared_ptr;
 
@@ -26,18 +29,18 @@ struct TaskManagerImpl : public TaskManager {
     _tasks.push_back(task);
 
     for (const auto& input : task->inputs()) {
-      auto artifact = get_artifact(input.to_std_path());
+      auto artifact = get_artifact(input);
       artifact->consumers.insert(task);
     }
 
     for (const auto& output : task->outputs()) {
-      auto artifact = get_artifact(output.to_std_path());
+      auto artifact = get_artifact(output);
       assert(artifact->producer == nullptr);
       artifact->producer = task;
     }
   }
 
-  virtual bee::OrError<bee::Unit> run(bool force_build) override
+  virtual bee::OrError<> run(bool force_build) override
   {
     for (auto& [_, artifact] : _artifacts) {
       if (artifact->producer == nullptr) { continue; }
@@ -54,18 +57,36 @@ struct TaskManagerImpl : public TaskManager {
 
     runner->close_join();
 
-    for (const auto& task : _tasks) { bail_unit(task->error()); }
+    std::vector<bee::Error> errors;
+    for (const auto& task : _tasks) {
+      if (task->error().is_error()) {
+        errors.push_back(task->error().error());
+      };
+    }
 
+    if (!errors.empty()) {
+      for (const auto& err : errors) { P(err.msg()); }
+      return bee::Error("Build failed");
+    }
+
+    std::set<std::string> tasks_that_didnt_run;
     for (const auto& task : _tasks) {
       if (!task->is_done()) {
-        return bee::Error::format("BuildTask '$' did not run", task->key());
+        tasks_that_didnt_run.insert(task->key().to_string());
       }
     }
 
-    return bee::unit;
+    for (const auto& task : _tasks) { task->clear(); }
+
+    if (!tasks_that_didnt_run.empty()) {
+      return bee::Error::fmt(
+        "Build tasks did not run:\n$", bee::join(tasks_that_didnt_run, "\n"));
+    }
+
+    return bee::ok();
   }
 
-  Artifact::ptr get_artifact(const fs::path& name)
+  Artifact::ptr get_artifact(const bee::FilePath& name)
   {
     auto it = _artifacts.find(name);
     if (it == _artifacts.end()) {
@@ -79,7 +100,7 @@ struct TaskManagerImpl : public TaskManager {
 
   std::vector<BuildTask::ptr> _tasks;
 
-  std::map<std::filesystem::path, Artifact::ptr> _artifacts;
+  std::map<bee::FilePath, Artifact::ptr> _artifacts;
 };
 
 } // namespace

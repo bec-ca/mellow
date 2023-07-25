@@ -22,7 +22,7 @@ struct BuildEngine {
     bool update_test_output;
   };
 
-  static bee::OrError<bee::Unit> build(const Args& args);
+  static bee::OrError<> build(const Args& args);
 };
 
 } // namespace mellow

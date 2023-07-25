@@ -1,5 +1,9 @@
 #include "hash_checker.hpp"
 
+#include <map>
+
+#include "generated_build_hash.hpp"
+
 #include "bee/error.hpp"
 #include "bee/file_path.hpp"
 #include "bee/file_reader.hpp"
@@ -8,10 +12,7 @@
 #include "bee/format_filesystem.hpp"
 #include "bee/simple_checksum.hpp"
 #include "bee/string_util.hpp"
-#include "generated_build_hash.hpp"
 #include "yasf/cof.hpp"
-
-#include <map>
 
 using bee::FilePath;
 using bee::SimpleChecksum;
@@ -45,7 +46,7 @@ bee::OrError<gbh::TaskHash> read_task_hash(const FilePath& filename)
   return yasf::Cof::deserialize<gbh::TaskHash>(content);
 }
 
-bee::OrError<bee::Unit> write_task_hash(
+bee::OrError<> write_task_hash(
   const FilePath& filename, const gbh::TaskHash& task_hash)
 {
   auto content = yasf::Cof::serialize(task_hash);
@@ -57,9 +58,8 @@ vector<gbh::FileHash> compute_hashes(const set<FilePath>& files)
 {
   vector<gbh::FileHash> output;
   for (const auto& filename : files) {
-    auto hash = hash_file(filename).move_value_default("");
-    auto mtime =
-      bee::FileSystem::file_mtime(filename).move_value_default(Time());
+    auto hash = hash_file(filename).value_or("");
+    auto mtime = bee::FileSystem::file_mtime(filename).value_or(Time());
     output.push_back({
       .name = filename.to_std_path(),
       .hash = hash,
@@ -166,7 +166,7 @@ void HashChecker::write_updated_hashes()
   auto err = write_task_hash(_hash_filename, get_hashes());
 
   if (err.is_error()) {
-    bee::print_err_line("Failed to write hash cache for to $", _hash_filename);
+    PE("Failed to write hash cache for to $", _hash_filename);
   }
 }
 

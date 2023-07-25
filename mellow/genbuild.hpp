@@ -1,14 +1,14 @@
 #pragma once
 
-#include "bee/error.hpp"
-
 #include <optional>
 #include <string>
+
+#include "bee/error.hpp"
 
 namespace mellow {
 
 struct GenBuild {
-  static bee::OrError<bee::Unit> run(
+  static bee::OrError<> run(
     const std::optional<std::string>& directory,
     const std::optional<std::string>& output_mbuild);
 };

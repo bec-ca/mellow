@@ -1,13 +1,13 @@
 #pragma once
 
+#include <filesystem>
+#include <set>
+#include <vector>
+
 #include "generated_build_hash.hpp"
 #include "package_path.hpp"
 
 #include "bee/file_path.hpp"
-
-#include <filesystem>
-#include <set>
-#include <vector>
 
 namespace mellow {
 

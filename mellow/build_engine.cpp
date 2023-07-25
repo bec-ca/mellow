@@ -1,5 +1,15 @@
 #include "build_engine.hpp"
 
+#include <chrono>
+#include <filesystem>
+#include <future>
+#include <map>
+#include <optional>
+#include <ratio>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "build_config.hpp"
 #include "build_normalizer.hpp"
 #include "build_task.hpp"
@@ -22,16 +32,6 @@
 #include "diffo/diff.hpp"
 #include "yasf/cof.hpp"
 
-#include <chrono>
-#include <filesystem>
-#include <future>
-#include <map>
-#include <optional>
-#include <ratio>
-#include <set>
-#include <string>
-#include <vector>
-
 using bee::always_false_v;
 using bee::compose_set;
 using bee::compose_vector;
@@ -41,13 +41,9 @@ using bee::FilePath;
 using bee::FileReader;
 using bee::FileSystem;
 using bee::FileWriter;
-using bee::format;
 using bee::insert;
-using bee::print_err_line;
-using bee::print_line;
 using bee::Span;
 using bee::SubProcess;
-using std::future;
 using std::map;
 using std::nullopt;
 using std::optional;
@@ -63,18 +59,18 @@ namespace fs = std::filesystem;
 namespace mellow {
 namespace {
 
-struct RunCommand {
+struct CommandRunner {
   struct Args {
     const FilePath& output_prefix;
-    const string cmd;
+    const FilePath cmd;
     const vector<string>& args = {};
-    const optional<string>& cwd = nullopt;
+    const optional<FilePath>& cwd = nullopt;
     const Span timeout;
     const bool verbose;
   };
-  const string cmd;
+  const FilePath cmd;
   const vector<string> args;
-  const optional<string> cwd;
+  const optional<FilePath> cwd;
 
   const FilePath stdout_path;
   const FilePath stderr_path;
@@ -82,14 +78,12 @@ struct RunCommand {
   const Span timeout;
   const bool verbose;
 
-  RunCommand(const Args& args)
+  CommandRunner(const Args& args)
       : cmd(args.cmd),
         args(args.args),
         cwd(args.cwd),
-        stdout_path(
-          FilePath::of_string(args.output_prefix.to_string() + ".stdout")),
-        stderr_path(
-          FilePath::of_string(args.output_prefix.to_string() + ".stderr")),
+        stdout_path(args.output_prefix + ".stdout"),
+        stderr_path(args.output_prefix + ".stderr"),
         timeout(args.timeout),
         verbose(args.verbose)
   {}
@@ -97,23 +91,20 @@ struct RunCommand {
   string non_file_inputs_key() const
   {
     vector<string> parts;
-    concat(parts, cmd);
+    concat(parts, cmd.to_string());
     concat(parts, args);
     return bee::join(parts, "##");
   }
 
-  bee::OrError<bee::Unit> operator()() const
+  bee::OrError<> operator()() const
   {
-    auto tag_error =
-      [this](const bee::OrError<bee::Unit>& err) -> bee::OrError<bee::Unit> {
+    auto tag_error = [this](const bee::OrError<>& err) -> bee::OrError<> {
       if (!err.is_error()) {
         return bee::ok();
       } else {
-        auto stderr_content =
-          FileReader::read_file(stderr_path).move_value_default("");
-        auto stdout_content =
-          FileReader::read_file(stdout_path).move_value_default("");
-        return bee::Error::format(
+        auto stderr_content = FileReader::read_file(stderr_path).value_or("");
+        auto stdout_content = FileReader::read_file(stdout_path).value_or("");
+        return bee::Error::fmt(
           "Command '$ $' failed, error:'$', stderr:\n$\nstdout:\n$",
           cmd,
           args,
@@ -125,34 +116,38 @@ struct RunCommand {
 
     bail_unit(FileSystem::mkdirs(stdout_path.parent()));
     bail_unit(FileSystem::mkdirs(stderr_path.parent()));
-    if (verbose) { print_line("Running $ $...", cmd, args); }
+    if (verbose) { P("Running $ $...", cmd, args); }
     auto ret = SubProcess::spawn({
       .cmd = cmd,
       .args = args,
       .stdout_spec = stdout_path,
       .stderr_spec = stderr_path,
+      .cwd = cwd,
     });
 
     if (ret.is_error()) { return tag_error(ret.error()); }
     auto& pid = ret.value();
 
-    promise<bee::OrError<bee::Unit>> wait_result_promise;
-    future<bee::OrError<bee::Unit>> wait_result(
-      wait_result_promise.get_future());
+    promise<bee::OrError<>> wait_result_promise;
+    auto wait_result = wait_result_promise.get_future();
 
     thread waiter_thread(
       [pid, wait_result_promise = std::move(wait_result_promise)]() mutable {
-        auto ret = pid->wait();
-        wait_result_promise.set_value(std::move(ret));
+        try {
+          auto ret = pid->wait();
+          wait_result_promise.set_value(std::move(ret));
+        } catch (const std::exception& exn) {
+          wait_result_promise.set_value(exn);
+        }
       });
 
-    auto check_status = [&]() -> bee::OrError<bee::Unit> {
+    auto check_status = [&]() -> bee::OrError<> {
       auto status = wait_result.wait_for(timeout.to_chrono());
       if (
         status == std::future_status::timeout ||
         status == std::future_status::deferred) {
         bail_unit(pid->kill());
-        return tag_error(bee::Error("Command timed out after 1 minute"));
+        return tag_error(bee::Error::fmt("Command timed out after $", timeout));
       } else {
         return tag_error(wait_result.get());
       }
@@ -180,15 +175,14 @@ bool equal_files(const FilePath& file1, const FilePath& file2)
   return !content1.is_error() && !content2.is_error() && *content1 == *content2;
 }
 
-bee::OrError<bee::Unit> copy_if_differs(
-  const FilePath& from, const FilePath& to)
+bee::OrError<> copy_if_differs(const FilePath& from, const FilePath& to)
 {
   if (equal_files(from, to)) { return bee::ok(); }
   return FileSystem::copy(from, to);
 }
 
 struct RunTest {
-  const RunCommand run_command;
+  const CommandRunner run_command;
 
   struct Args {
     const PackagePath& rule_name;
@@ -206,7 +200,7 @@ struct RunTest {
   RunTest(const Args& args)
       : run_command({
           .output_prefix = args.rule_name.to_filesystem(args.root_build_dir),
-          .cmd = args.test_binary.to_string(),
+          .cmd = args.test_binary,
           .timeout = Span::of_minutes(1),
         }),
         expected(args.expected),
@@ -217,9 +211,9 @@ struct RunTest {
         update_test_output(args.update_test_output)
   {}
 
-  bee::OrError<bee::Unit> operator()() const
+  bee::OrError<> operator()() const
   {
-    bee::OrError<bee::Unit> result = run_command();
+    auto result = run_command();
     if (result.is_error()) { return result.error(); }
     const auto& stdout_path = run_command.stdout_path;
 
@@ -235,14 +229,14 @@ struct RunTest {
 
     for (const auto& diff_line : diff) {
       if (diff_line.action == diffo::Action::Equal) { continue; }
-      msg.push_back(format(
-        "$:$: $ $",
-        expected,
-        diff_line.line_number,
-        diffo::Diff::action_prefix(diff_line.action),
-        diff_line.line));
+      msg.push_back(
+        F("$:$: $ $",
+          expected,
+          diff_line.line_number,
+          diffo::Diff::action_prefix(diff_line.action),
+          diff_line.line));
     }
-    return bee::Error::format("Test failed:\n$", bee::join(msg, "\n"));
+    return bee::Error::fmt("Test failed:\n$", bee::join(msg, "\n"));
   }
 };
 
@@ -258,9 +252,18 @@ struct RunGenRule {
     FilePath run_dir_path;
   };
 
-  bee::OrError<bee::Unit> operator()() const
+  bee::OrError<> operator()() const
   {
     FilePath run_dir = nrule->package_name.to_filesystem(root_build_dir);
+
+    const CommandRunner run_command({
+      .output_prefix = run_dir,
+      .cmd = binary,
+      .args = flags,
+      .cwd = run_dir,
+      .timeout = Span::of_minutes(1),
+    });
+
     vector<output_info> output_info;
     for (const auto& output_name : outputs) {
       auto output = nrule->package_name / output_name;
@@ -271,18 +274,16 @@ struct RunGenRule {
     for (const auto& output : output_info) {
       FileSystem::remove(output.run_dir_path);
     }
-    bail_unit(SubProcess::run(
-      {.cmd = binary.to_std_path(), .args = flags, .cwd = run_dir}));
+    bail_unit(run_command());
     for (const auto& output : output_info) {
       if (!FileSystem::exists(output.run_dir_path)) {
-        return bee::Error::format(
-          "Expected output not generated: $", output.path);
+        return bee::Error::fmt("Expected output not generated: $", output.path);
       }
     }
     for (const auto& info : output_info) {
       bail_unit(copy_if_differs(info.run_dir_path, info.path));
     }
-    return bee::unit;
+    return bee::ok();
   }
 };
 
@@ -290,17 +291,17 @@ struct SystemLibConfig {
   vector<string> cpp_flags;
   vector<string> ld_libs;
 
-  using format = std::pair<vector<string>, vector<string>>;
+  using fmt = std::pair<vector<string>, vector<string>>;
 
   yasf::Value::ptr to_yasf_value() const
   {
-    return yasf::ser(format(cpp_flags, ld_libs));
+    return yasf::ser(fmt(cpp_flags, ld_libs));
   }
 
   static bee::OrError<SystemLibConfig> of_yasf_value(
     const yasf::Value::ptr& value)
   {
-    bail(p, yasf::des<format>(value));
+    bail(p, yasf::des<fmt>(value));
     return SystemLibConfig{
       .cpp_flags = p.first,
       .ld_libs = p.second,
@@ -313,7 +314,7 @@ struct RunSystemLib {
   const gmp::SystemLib rrule;
   const PackagePath system_lib_config;
 
-  bee::OrError<bee::Unit> operator()() const
+  bee::OrError<> operator()() const
   {
     auto run = [&](const string& arg) -> bee::OrError<vector<string>> {
       auto system_lib_config = SubProcess::OutputToString::create();
@@ -327,8 +328,7 @@ struct RunSystemLib {
       });
       if (ret.is_error()) {
         bail(stderr_content, stderr_spec->get_output());
-        return bee::Error::format(
-          "$:\nstderr:\n$", ret.error(), stderr_content);
+        return bee::Error::fmt("$:\nstderr:\n$", ret.error(), stderr_content);
       }
       bail(flags_str, system_lib_config->get_output());
       return bee::split_space(flags_str);
@@ -347,7 +347,7 @@ struct RunSystemLib {
     bail_unit(FileSystem::mkdirs(output_path.parent()));
     bail_unit(FileWriter::save_file(output_path, content));
 
-    return bee::unit;
+    return bee::ok();
   }
 };
 
@@ -363,7 +363,7 @@ struct RunCppRule {
     const bool verbose;
   };
 
-  bee::OrError<bee::Unit> operator()() const
+  bee::OrError<> operator()() const
   {
     set<FilePath> lib_dep_objects;
 
@@ -401,9 +401,9 @@ struct RunCppRule {
     //   concat_many(cmd_args, "-MMD", "-MF", dotd_fs);
     // }
 
-    auto r = RunCommand({
+    auto r = CommandRunner({
       .output_prefix = main_output,
-      .cmd = _compiler,
+      .cmd = FilePath::of_string(_compiler),
       .args = cmd_args,
       .timeout = Span::of_minutes(5),
       .verbose = _verbose,
@@ -586,41 +586,40 @@ struct Builder {
     return runner;
   }
 
-  bee::OrError<bee::Unit> handle_rule(
-    const gmp::Profile&, const NormalizedRule::ptr&)
+  bee::OrError<> handle_rule(const gmp::Profile&, const NormalizedRule::ptr&)
   {
     return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::ExternalPackage&, const NormalizedRule::ptr&)
   {
     return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::CppBinary&, const NormalizedRule::ptr& nrule)
   {
     bail(cpp_rule, handle_cpp_rule(nrule));
     auto ret = _binaries.emplace(cpp_rule->name(), cpp_rule);
     if (!ret.second) {
-      return bee::Error::format("Binary $ declared twice", cpp_rule->name());
+      return bee::Error::fmt("Binary $ declared twice", cpp_rule->name());
     }
     return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::CppLibrary&, const NormalizedRule::ptr& nrule)
   {
     bail(cpp_rule, handle_cpp_rule(nrule, true));
     auto ret = _library_rules.emplace(cpp_rule->name(), cpp_rule);
     if (!ret.second) {
-      return bee::Error::format("Library $ declared twice", cpp_rule->name());
+      return bee::Error::fmt("Library $ declared twice", cpp_rule->name());
     }
     return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::CppTest& rrule, const NormalizedRule::ptr& nrule)
   {
     bool should_run = true;
@@ -633,7 +632,7 @@ struct Builder {
         } else if (os == "macos") {
           if (bee::RunningOS == bee::OS::Macos) { should_run = true; }
         } else {
-          return bee::Error::format("Invalid os name in os_filter: $", os);
+          return bee::Error::fmt("Invalid os name in os_filter: $", os);
         }
       }
     }
@@ -665,10 +664,10 @@ struct Builder {
       .outputs = {runner.ok_path},
     });
 
-    return bee::unit;
+    return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::GenRule& rrule, const NormalizedRule::ptr& nrule)
   {
     auto name = nrule->name;
@@ -678,7 +677,7 @@ struct Builder {
 
     auto it = _binaries.find(binary_rule_name);
     if (it == _binaries.end()) {
-      return bee::Error::format(
+      return bee::Error::fmt(
         "Gen rule $ depends on unknown binary $", name, binary_rule_name);
     }
 
@@ -691,7 +690,7 @@ struct Builder {
 
     auto binary_path = binary_rule->main_output();
     if (!binary_path.has_value()) {
-      return bee::Error::format(
+      return bee::Error::fmt(
         "Gen rul $ depends on binary $, but rule does not produce a binary",
         name,
         binary_rule_name);
@@ -711,10 +710,10 @@ struct Builder {
       .outputs = outputs,
     });
 
-    return bee::unit;
+    return bee::ok();
   }
 
-  bee::OrError<bee::Unit> handle_rule(
+  bee::OrError<> handle_rule(
     const gmp::SystemLib& rrule, const NormalizedRule::ptr& nrule)
   {
     auto system_lib_config_opt = nrule->system_lib_config();
@@ -738,10 +737,10 @@ struct Builder {
       .outputs = outputs,
     });
 
-    return bee::unit;
+    return bee::ok();
   }
 
-  bee::OrError<bee::Unit> prepare_rules(
+  bee::OrError<> prepare_rules(
     const vector<NormalizedRule::ptr>& normalized_rules)
   {
     for (const auto& nrule : normalized_rules) {
@@ -750,10 +749,10 @@ struct Builder {
       bail_unit(result);
     }
 
-    return bee::unit;
+    return bee::ok();
   }
 
-  bee::OrError<bee::Unit> select_profile(const vector<gmp::Profile>& profiles)
+  bee::OrError<> select_profile(const vector<gmp::Profile>& profiles)
   {
     string profile_name = "default";
     vector<string> profile_flags;
@@ -763,7 +762,7 @@ struct Builder {
       } else {
         profile_name = profiles[0].name;
       }
-      print_line("Using profile:$ ", profile_name);
+      P("Using profile:$ ", profile_name);
 
       bool found = false;
       for (const auto& profile : profiles) {
@@ -774,22 +773,22 @@ struct Builder {
         }
       }
       if (!found) {
-        return bee::Error::format("Profile $ not found", profile_name);
+        return bee::Error::fmt("Profile $ not found", profile_name);
       }
     }
 
     _root_build_dir = _output_dir_base / profile_name;
     bail_unit(FileSystem::mkdirs(_root_build_dir));
 
-    return bee::unit;
+    return bee::ok();
   }
 
-  bee::OrError<bee::Unit> run() { return _manager->run(_force_build); }
+  bee::OrError<> run() { return _manager->run(_force_build); }
 
   static bee::OrError<Builder> create(const BuildEngine::Args& args)
   {
     if (!fs::exists(args.build_config)) {
-      print_err_line(
+      PE(
         "Build config file '$' not found, creating one with default settings",
         args.build_config);
       bail_unit(GenerateBuildConfig::generate(args.build_config, {}));
@@ -828,7 +827,7 @@ struct Builder {
 
 } // namespace
 
-bee::OrError<bee::Unit> BuildEngine::build(const Args& args)
+bee::OrError<> BuildEngine::build(const Args& args)
 {
   BuildNormalizer norm(args.mbuild_name, args.external_packages_dir);
   bail(build, norm.normalize_build(args.root_source_dir));
@@ -838,7 +837,9 @@ bee::OrError<bee::Unit> BuildEngine::build(const Args& args)
 
   bail_unit(builder.prepare_rules(build.normalized_rules));
 
-  return builder.run();
+  bail_unit(builder.run());
+
+  return {};
 }
 
 } // namespace mellow

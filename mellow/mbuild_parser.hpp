@@ -1,12 +1,12 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "generated_mbuild_parser.hpp"
 
 #include "bee/error.hpp"
 #include "bee/file_path.hpp"
-
-#include <string>
-#include <vector>
 
 namespace mellow {
 
@@ -22,7 +22,7 @@ struct MbuildParser {
 
   static std::string to_string(const Rules& config);
 
-  static bee::OrError<bee::Unit> to_file(
+  static bee::OrError<> to_file(
     const bee::FilePath& filename, const Rules& config);
 };
 

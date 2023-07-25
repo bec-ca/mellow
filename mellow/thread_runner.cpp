@@ -9,7 +9,7 @@ namespace mellow {
 
 ThreadRunner::ThreadRunner(int workers)
 {
-  bee::print_line("Using $ workers", workers);
+  P("Using $ workers", workers);
   for (int i = 0; i < workers; i++) {
     _workers.emplace_back([job_queue = _job_queue] {
       while (true) {
@@ -21,7 +21,7 @@ ThreadRunner::ThreadRunner(int workers)
   }
 }
 
-ThreadRunner::~ThreadRunner() { _job_queue->close(); }
+ThreadRunner::~ThreadRunner() { _close(); }
 
 void ThreadRunner::wait_all_done()
 {
@@ -33,17 +33,24 @@ void ThreadRunner::wait_all_done()
   }
 }
 
-void ThreadRunner::_enqueue(function<void()> f)
+void ThreadRunner::_enqueue(function<void()>&& f)
 {
   _job_queue->push(std::move(f));
   _pending++;
 }
 
+void ThreadRunner::_close()
+{
+  _job_queue->close();
+  for (auto& worker : _workers) {
+    if (worker.joinable()) { worker.join(); }
+  }
+}
+
 void ThreadRunner::close_join()
 {
   wait_all_done();
-  _job_queue->close();
-  for (auto& worker : _workers) { worker.join(); }
+  _close();
 }
 
 int ThreadRunner::num_cpus() { return thread::hardware_concurrency(); }

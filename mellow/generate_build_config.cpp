@@ -1,17 +1,15 @@
 #include "generate_build_config.hpp"
 
-#include "bee/file_writer.hpp"
-#include "bee/format_vector.hpp"
 #include "build_config.hpp"
 #include "generated_build_config.hpp"
 
+#include "bee/file_writer.hpp"
+#include "bee/format_vector.hpp"
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 
 namespace fs = std::filesystem;
 
-using bee::print_err_line;
-using bee::print_line;
 using std::nullopt;
 using std::optional;
 using std::string;
@@ -58,8 +56,7 @@ fs::path get_cpp_compiler(const optional<string>& default_compiler)
     if (expanded.has_value()) {
       return *expanded;
     } else {
-      print_err_line(
-        "Default compiler '$' not found in $PATH", *default_compiler);
+      PE("Default compiler '$' not found in $PATH", *default_compiler);
     }
   }
 
@@ -68,8 +65,7 @@ fs::path get_cpp_compiler(const optional<string>& default_compiler)
     if (expanded.has_value()) {
       return *expanded;
     } else {
-      print_err_line(
-        "Compiler in CXX env variable not found in $PATH", *default_compiler);
+      PE("Compiler in CXX env variable not found in $PATH", *default_compiler);
     }
   }
 
@@ -105,9 +101,9 @@ BuildConfig generate_config(const GenerateBuildConfig::Args& args)
   auto cpp_compiler = get_cpp_compiler(args.default_cpp_compiler);
   auto cpp_flags = get_cpp_flags();
   auto ld_flags = get_ld_flags();
-  print_line("CPP compiler: $", cpp_compiler.string());
-  if (!cpp_flags.empty()) { print_line("CPP flags: $", cpp_flags); }
-  if (!ld_flags.empty()) { print_line("LD flags: $", ld_flags); }
+  P("CPP compiler: $", cpp_compiler.string());
+  if (!cpp_flags.empty()) { P("CPP flags: $", cpp_flags); }
+  if (!ld_flags.empty()) { P("LD flags: $", ld_flags); }
   config.rules.push_back({bc::Cpp{
     .compiler = cpp_compiler,
     .cpp_flags = cpp_flags,
@@ -118,7 +114,7 @@ BuildConfig generate_config(const GenerateBuildConfig::Args& args)
 
 } // namespace
 
-bee::OrError<bee::Unit> GenerateBuildConfig::generate(
+bee::OrError<> GenerateBuildConfig::generate(
   const fs::path& output, const Args& args)
 {
   auto config = generate_config(args);

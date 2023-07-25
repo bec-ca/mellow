@@ -1,16 +1,16 @@
 #include "mbuild_parser.hpp"
 
-#include "bee/file_reader.hpp"
-#include "bee/file_writer.hpp"
-#include "build_rules.hpp"
-#include "yasf/config_parser.hpp"
-
 #include <string>
 #include <vector>
 
+#include "build_rules.hpp"
+
+#include "bee/file_reader.hpp"
+#include "bee/file_writer.hpp"
+#include "yasf/config_parser.hpp"
+
 using bee::FilePath;
 using bee::OrError;
-using bee::Unit;
 using std::string;
 using std::vector;
 
@@ -38,8 +38,7 @@ string MbuildParser::to_string(const Rules& config)
   return yasf::ser(config)->to_string_hum();
 }
 
-OrError<Unit> MbuildParser::to_file(
-  const FilePath& filename, const Rules& config)
+OrError<> MbuildParser::to_file(const FilePath& filename, const Rules& config)
 {
   return bee::FileWriter::save_file(filename, to_string(config));
 }

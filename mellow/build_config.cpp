@@ -1,12 +1,12 @@
 #include "build_config.hpp"
 
+#include <filesystem>
+
 #include "bee/file_reader.hpp"
 #include "bee/file_writer.hpp"
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 #include "yasf/config_parser.hpp"
-
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -49,8 +49,7 @@ bee::OrError<BuildConfig> BuildConfig::load_from_file(const fs::path& filename)
   return of_yasf_value(parsed);
 }
 
-bee::OrError<bee::Unit> BuildConfig::write_to_file(
-  const fs::path& filename) const
+bee::OrError<> BuildConfig::write_to_file(const fs::path& filename) const
 {
   return bee::FileWriter::save_file(
     bee::FilePath::of_std_path(filename), to_yasf_value()->to_string_hum());

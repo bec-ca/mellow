@@ -1,5 +1,11 @@
 #include "genbuild.hpp"
 
+#include <filesystem>
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <string>
+
 #include "generated_mbuild_parser.hpp"
 #include "mbuild_parser.hpp"
 #include "package_path.hpp"
@@ -14,19 +20,13 @@
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 
-#include <filesystem>
-#include <map>
-#include <optional>
-#include <string>
-
 namespace fs = std::filesystem;
 
 using bee::always_false_v;
 using bee::FilePath;
-using bee::format;
 using bee::is_one_of_v;
 using bee::OrError;
-using bee::print_line;
+
 using bee::to_vector;
 using std::is_same_v;
 using std::map;
@@ -125,7 +125,7 @@ FilePath get_repo_root_dir(FilePath dir)
   }
 }
 
-OrError<bee::Unit> GenBuild::run(
+OrError<> GenBuild::run(
   const optional<string>& directory_opt,
   const optional<string>& mbuild_path_opt)
 {
@@ -166,7 +166,7 @@ OrError<bee::Unit> GenBuild::run(
   map<PackagePath, gmp::SystemLib> system_libs;
 
   if (!bee::FileSystem::exists(mbuild_path)) {
-    print_line("No build rules found, a new one will be created from scratch");
+    P("No build rules found, a new one will be created from scratch");
   } else {
     bail(existing_rules, MbuildParser::from_file(mbuild_path));
     for (const auto& rule : existing_rules) {
@@ -305,7 +305,7 @@ OrError<bee::Unit> GenBuild::run(
         std::visit(
           [&]<class U>(const U& orig) {
             if constexpr (!is_same_v<T, U>) {
-              throw "Unexpected mismatch rule type";
+              throw std::runtime_error("Unexpected mismatch rule type");
             } else if constexpr (is_same_v<T, gmp::Profile>) {
             } else if constexpr (is_same_v<T, gmp::CppBinary>) {
               rule.ld_flags = orig.ld_flags;
@@ -363,7 +363,7 @@ OrError<bee::Unit> GenBuild::run(
     auto cpp_binary = gmp::CppBinary{
       .name = name,
       .sources = {},
-      .libs = {format("$_main", name)},
+      .libs = {F("$_main", name)},
       .ld_flags = {},
     };
     replace_rule(package_path / name, gmp::Rule(cpp_binary));

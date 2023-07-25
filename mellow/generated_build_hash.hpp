@@ -1,14 +1,14 @@
 #pragma once
 
-#include "bee/error.hpp"
-#include "bee/time.hpp"
-#include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
-
 #include <set>
 #include <string>
 #include <variant>
 #include <vector>
+
+#include "bee/error.hpp"
+#include "bee/time.hpp"
+#include "yasf/serializer.hpp"
+#include "yasf/to_stringable_mixin.hpp"
 
 namespace generated_build_hash {
 

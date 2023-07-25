@@ -1,13 +1,13 @@
+#include <atomic>
+#include <cmath>
+#include <exception>
+#include <thread>
+
 #include "thread_runner.hpp"
 
 #include "bee/format.hpp"
 #include "bee/testing.hpp"
 
-#include <atomic>
-#include <cmath>
-#include <thread>
-
-using bee::print_line;
 using std::pair;
 using std::vector;
 
@@ -22,10 +22,10 @@ TEST(basic)
     return main_id == std::this_thread::get_id() ? "running on main thread"
                                                  : "running on another thread";
   };
-  print_line("running test: $", same_as_main());
+  P("running test: $", same_as_main());
   runner.enqueue(
-    [=] { print_line("running task: $", same_as_main()); },
-    [=] { print_line("done running: ", same_as_main()); });
+    [=] { P("running task: $", same_as_main()); },
+    [=] { P("done running: $", same_as_main()); });
   runner.close_join();
 }
 
@@ -41,9 +41,9 @@ TEST(many)
   }
   runner.close_join();
 
-  print_line("num_jobs: $", num_jobs);
-  print_line("counter_ran: $", counter_ran.load());
-  print_line("counter_done: $", counter_done);
+  P("num_jobs: $", num_jobs);
+  P("counter_ran: $", counter_ran.load());
+  P("counter_done: $", counter_done);
 }
 
 TEST(return_value)
@@ -58,7 +58,7 @@ TEST(return_value)
   }
   runner.close_join();
   sort(output.begin(), output.end());
-  for (auto v : output) { print_line("$ $", v.first, v.second); }
+  for (auto v : output) { P("$ $", v.first, v.second); }
 }
 
 } // namespace

@@ -137,7 +137,7 @@ bee::OrError<PackagePath> PackagePath::of_filesystem(
   auto path_parts = split_path(path.to_string());
 
   if (!is_prefix_of(root_parts, path_parts)) {
-    return bee::Error::format(
+    return bee::Error::fmt(
       "Path '$' is not a child of the root_package '$', $ $",
       path,
       root_package_dir,

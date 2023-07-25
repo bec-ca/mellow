@@ -1,13 +1,14 @@
 #include "build_task.hpp"
 
-#include "bee/format.hpp"
-#include "hash_checker.hpp"
-#include "thread_runner.hpp"
-
 #include <functional>
 #include <memory>
 #include <set>
 #include <string>
+
+#include "hash_checker.hpp"
+#include "thread_runner.hpp"
+
+#include "bee/format.hpp"
 
 using bee::FilePath;
 using std::function;
@@ -24,7 +25,7 @@ namespace mellow {
 BuildTask::BuildTask(
   const PackagePath& key,
   FilePath root_build_dir,
-  function<bee::OrError<bee::Unit>()> run,
+  function<bee::OrError<>()> run,
   set<FilePath> inputs,
   set<FilePath> outputs,
   const string& non_file_inputs_key,
@@ -59,11 +60,11 @@ void BuildTask::mark_done(
   _done = true;
   auto ptr = shared_from_this();
   for (const auto& t : (_depended_on)) {
-    t->dependency_done(ptr, runner, force_build);
+    t->enqueue_if_runnable(runner, force_build);
   }
 }
 
-const bee::OrError<bee::Unit>& BuildTask::error() const { return _error; }
+const bee::OrError<>& BuildTask::error() const { return _error; }
 
 bool BuildTask::is_done() const { return _done; }
 
@@ -75,20 +76,27 @@ void BuildTask::depends_on(const ptr& dependent, const ptr& depender)
   dependent->add_depends_on(depender);
 }
 
-void BuildTask::mark_error(bee::Error error)
+void BuildTask::mark_error(bee::Error&& error)
 {
   assert(!_done);
   _done = true;
   _error = std::move(error);
 }
 
-bool BuildTask::is_runnable() const { return _depends_on.empty(); }
-
-bee::OrError<bee::Unit> BuildTask::_do_run(bool force_build)
+bool BuildTask::is_runnable() const
 {
+  for (const auto& dep : _depends_on) {
+    if (!dep->is_done() || dep->error().is_error()) { return false; }
+  }
+  return true;
+}
+
+bee::OrError<> BuildTask::_do_run(bool force_build)
+{
+  _did_start = true;
   _progress_ui->task_started(_task_progress);
   bool cached = true;
-  auto result = [&]() -> bee::OrError<bee::Unit> {
+  auto result = [&]() -> bee::OrError<> {
     if (_run != nullptr) {
       auto hash_cache_filename =
         _key.append_no_sep(".hash").to_filesystem(_root_build_dir);
@@ -115,23 +123,16 @@ void BuildTask::enqueue_if_runnable(
   if (!is_runnable()) { return; }
 
   auto task = shared_from_this();
-  runner->enqueue<bee::OrError<bee::Unit>>(
+  runner->enqueue<bee::OrError<>>(
     [=]() { return task->_do_run(force_build); },
-    [=](bee::OrError<bee::Unit> result) {
+    [=](bee::OrError<> result) {
       if (result.is_error()) {
-        task->mark_error(bee::Error::format(
-          "$ failed: $", task->_key, std::move(result.error())));
+        task->mark_error(
+          bee::Error::fmt("$ failed: $", task->_key, result.error()));
       } else {
         task->mark_done(runner, force_build);
       }
     });
-}
-
-void BuildTask::dependency_done(
-  const ptr& dep, const shared_ptr<ThreadRunner>& runner, bool force_build)
-{
-  _depends_on.erase(dep);
-  enqueue_if_runnable(runner, force_build);
 }
 
 void BuildTask::add_depends_on(ptr task)
@@ -146,5 +147,11 @@ void BuildTask::add_depended_on(ptr task)
 
 const set<FilePath> BuildTask::outputs() const { return _outputs; }
 const set<FilePath> BuildTask::inputs() const { return _inputs; }
+
+void BuildTask::clear()
+{
+  _depends_on.clear();
+  _depended_on.clear();
+}
 
 } // namespace mellow

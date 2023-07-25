@@ -1,12 +1,12 @@
 #pragma once
 
-#include "bee/util.hpp"
-#include "package_path.hpp"
-
-#include "yasf/location.hpp"
-
 #include <set>
 #include <string>
+
+#include "package_path.hpp"
+
+#include "bee/util.hpp"
+#include "yasf/location.hpp"
 
 namespace mellow {
 namespace rules {

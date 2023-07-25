@@ -4,8 +4,10 @@
 
 #include "bee/format.hpp"
 #include "bee/util.hpp"
+#include "yasf/file_path_serializer.hpp"
 #include "yasf/parser_helpers.hpp"
 #include "yasf/serializer.hpp"
+#include "yasf/to_stringable_mixin.hpp"
 
 using PH = yasf::ParserHelper;
 
@@ -18,7 +20,7 @@ namespace generated_mbuild_parser {
 bee::OrError<Profile> Profile::of_yasf_value(const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
@@ -101,7 +103,7 @@ yasf::Value::ptr Profile::to_yasf_value() const
 bee::OrError<CppBinary> CppBinary::of_yasf_value(const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
@@ -198,7 +200,7 @@ bee::OrError<CppLibrary> CppLibrary::of_yasf_value(
   const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
@@ -307,7 +309,7 @@ yasf::Value::ptr CppLibrary::to_yasf_value() const
 bee::OrError<CppTest> CppTest::of_yasf_value(const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
@@ -401,7 +403,7 @@ yasf::Value::ptr CppTest::to_yasf_value() const
 bee::OrError<GenRule> GenRule::of_yasf_value(const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
@@ -483,11 +485,11 @@ yasf::Value::ptr GenRule::to_yasf_value() const
 bee::OrError<SystemLib> SystemLib::of_yasf_value(const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;
-  std::optional<std::string> output_command;
+  std::optional<bee::FilePath> output_command;
   std::optional<std::vector<std::string>> output_flags;
   std::optional<std::vector<std::string>> output_provide_headers;
 
@@ -507,7 +509,7 @@ bee::OrError<SystemLib> SystemLib::of_yasf_value(const yasf::Value::ptr& value)
       if (output_command.has_value()) {
         return PH::err("Field 'command' is defined more than once", element);
       }
-      bail_assign(output_command, yasf::des<std::string>(kv.value));
+      bail_assign(output_command, yasf::des<bee::FilePath>(kv.value));
     } else if (name == "flags") {
       if (output_flags.has_value()) {
         return PH::err("Field 'flags' is defined more than once", element);
@@ -549,7 +551,7 @@ yasf::Value::ptr SystemLib::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
   PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(fields, yasf::ser<std::string>(command), "command");
+  PH::push_back_field(fields, yasf::ser<bee::FilePath>(command), "command");
   if (!flags.empty()) {
     PH::push_back_field(
       fields, yasf::ser<std::vector<std::string>>(flags), "flags");
@@ -569,7 +571,7 @@ bee::OrError<ExternalPackage> ExternalPackage::of_yasf_value(
   const yasf::Value::ptr& value)
 {
   if (!value->is_list()) {
-    return PH::err("$: Expected list for record", (value));
+    return PH::err("Record expected a list, but got something else", value);
   }
 
   std::optional<std::string> output_name;

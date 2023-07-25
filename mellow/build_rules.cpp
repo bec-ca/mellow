@@ -45,59 +45,59 @@ Rule::rule_variant make_rule_variant(
 
 template <class T>
 concept HasSources = requires(T t) {
-                       {
-                         t.sources()
-                       };
-                     };
+  {
+    t.sources()
+  };
+};
 
 template <class T>
 concept HasLibs = requires(T t) {
-                    {
-                      t.libs()
-                    };
-                  };
+  {
+    t.libs()
+  };
+};
 
 template <class T>
 concept HasHeaders = requires(T t) {
-                       {
-                         t.headers()
-                       };
-                     };
+  {
+    t.headers()
+  };
+};
 
 template <class T>
 concept HasLdFlags = requires(T t) {
-                       {
-                         t.ld_flags
-                       };
-                     };
+  {
+    t.ld_flags
+  };
+};
 
 template <class T>
 concept HasCppFlags = requires(T t) {
-                        {
-                          t.cpp_flags
-                        };
-                      };
+  {
+    t.cpp_flags
+  };
+};
 
 template <class T>
 concept HasAdditionalDeps = requires(T t) {
-                              {
-                                t.additional_deps()
-                              };
-                            };
+  {
+    t.additional_deps()
+  };
+};
 
 template <class T>
 concept HasOutputCppObjects = requires(T t) {
-                                {
-                                  t.output_cpp_object()
-                                };
-                              };
+  {
+    t.output_cpp_object()
+  };
+};
 
 template <class T>
 concept HasName = requires(T t) {
-                    {
-                      t.name()
-                      } -> std::convertible_to<PackagePath>;
-                  };
+  {
+    t.name()
+  } -> std::convertible_to<PackagePath>;
+};
 
 template <class T>
 concept HasOutputs = requires(T t) { t.outputs(); };

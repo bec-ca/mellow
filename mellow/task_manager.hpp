@@ -11,7 +11,7 @@ struct TaskManager {
 
   virtual void create_task(const BuildTask::Args& args) = 0;
 
-  virtual bee::OrError<bee::Unit> run(bool force_build) = 0;
+  virtual bee::OrError<> run(bool force_build) = 0;
 
   static ptr create();
 };

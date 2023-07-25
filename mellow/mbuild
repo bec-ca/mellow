@@ -1,4 +1,15 @@
 cpp_library:
+  name: build_command
+  sources: build_command.cpp
+  headers: build_command.hpp
+  libs:
+    /command/cmd
+    /command/command_builder
+    /command/file_path
+    build_engine
+    defaults
+
+cpp_library:
   name: build_config
   sources: build_config.cpp
   headers: build_config.hpp
@@ -98,6 +109,42 @@ cpp_library:
     build_config
     generate_build_config
 
+cpp_library:
+  name: defaults
+  sources: defaults.cpp
+  headers: defaults.hpp
+  libs: /bee/file_path
+
+cpp_library:
+  name: fetch_command
+  sources: fetch_command.cpp
+  headers: fetch_command.hpp
+  libs:
+    /bee/file_path
+    /bee/filesystem
+    /bee/format
+    /bee/format_vector
+    /bee/sub_process
+    /command/cmd
+    /command/command_builder
+    /command/file_path
+    defaults
+    mbuild_parser
+
+cpp_library:
+  name: format_command
+  sources: format_command.cpp
+  headers: format_command.hpp
+  libs:
+    /bee/concepts
+    /bee/file_reader
+    /bee/file_writer
+    /bee/filesystem
+    /bee/sort
+    /command/cmd
+    /command/command_builder
+    mbuild_parser
+
 cpp_binary:
   name: gen_build_config
   libs: gen_build_config_main
@@ -139,6 +186,15 @@ cpp_library:
     generated_mbuild_parser
     mbuild_parser
     package_path
+
+cpp_library:
+  name: genbuild_command
+  sources: genbuild_command.cpp
+  headers: genbuild_command.hpp
+  libs:
+    /command/cmd
+    /command/command_builder
+    genbuild
 
 cpp_library:
   name: generate_build_config
@@ -210,8 +266,10 @@ cpp_library:
   headers: generated_mbuild_parser.hpp
   libs:
     /bee/error
+    /bee/file_path
     /bee/format
     /bee/util
+    /yasf/file_path_serializer
     /yasf/parser_helpers
     /yasf/serializer
     /yasf/to_stringable_mixin
@@ -254,6 +312,7 @@ cpp_library:
   name: mbuild_parser_generator_main
   sources: mbuild_parser_generator_main.cpp
   libs:
+    /yasf/core_types
     /yasf/generator
     /yasf/generator_main_lib
     /yasf/record
@@ -266,18 +325,12 @@ cpp_library:
   name: mellow_main
   sources: mellow_main.cpp
   libs:
-    /bee/file_reader
-    /bee/file_writer
-    /bee/filesystem
-    /bee/format
-    /bee/sort
-    /bee/util
-    /command/command_builder
     /command/group_builder
-    build_engine
+    build_command
     config_command
-    genbuild
-    mbuild_parser
+    fetch_command
+    format_command
+    genbuild_command
 
 cpp_library:
   name: normalized_rule
@@ -314,7 +367,7 @@ cpp_library:
   sources: progress_ui.cpp
   headers: progress_ui.hpp
   libs:
-    /bee/file_descriptor
+    /bee/fd
     /bee/time
     package_path
 
@@ -330,7 +383,10 @@ cpp_library:
   name: task_manager
   sources: task_manager.cpp
   headers: task_manager.hpp
-  libs: build_task
+  libs:
+    /bee/string_util
+    build_task
+    package_path
 
 cpp_library:
   name: thread_runner

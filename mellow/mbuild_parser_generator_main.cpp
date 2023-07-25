@@ -1,3 +1,4 @@
+#include "yasf/core_types.hpp"
 #include "yasf/generator.hpp"
 #include "yasf/generator_main_lib.hpp"
 #include "yasf/record.hpp"
@@ -59,7 +60,7 @@ Definitions create_def()
     "SystemLib",
     fields(
       required_field("name", str),
-      required_field("command", str),
+      required_field("command", file_path),
       optional_field("flags", vector_str),
       required_field("provide_headers", vector_str)));
 

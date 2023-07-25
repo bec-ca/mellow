@@ -1,13 +1,14 @@
 #pragma once
 
-#include "bee/error.hpp"
-#include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
-
 #include <set>
 #include <string>
 #include <variant>
 #include <vector>
+
+#include "bee/error.hpp"
+#include "bee/file_path.hpp"
+#include "yasf/serializer.hpp"
+#include "yasf/to_stringable_mixin.hpp"
 
 namespace generated_mbuild_parser {
 
@@ -82,7 +83,7 @@ struct GenRule : public yasf::ToStringableMixin<GenRule> {
 
 struct SystemLib : public yasf::ToStringableMixin<SystemLib> {
   std::string name;
-  std::string command;
+  bee::FilePath command;
   std::vector<std::string> flags = {};
   std::vector<std::string> provide_headers;
   std::optional<yasf::Location> location;
@@ -105,7 +106,7 @@ struct ExternalPackage : public yasf::ToStringableMixin<ExternalPackage> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
-struct Rule {
+struct Rule : public yasf::ToStringableMixin<Rule> {
   using value_type = std::variant<
     Profile,
     CppBinary,
@@ -120,6 +121,10 @@ struct Rule {
   Rule() noexcept = default;
   Rule(const value_type& value) noexcept;
   Rule(value_type&& value) noexcept;
+
+  template <std::convertible_to<value_type> U>
+  Rule(U&& value) noexcept : value(std::forward<U>(value))
+  {}
 
   static bee::OrError<Rule> of_yasf_value(const yasf::Value::ptr& config_value);
 

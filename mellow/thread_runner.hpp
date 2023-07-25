@@ -1,9 +1,10 @@
 #pragma once
 
-#include "bee/queue.hpp"
-
 #include <functional>
+#include <stdexcept>
 #include <thread>
+
+#include "bee/queue.hpp"
 
 namespace mellow {
 
@@ -29,9 +30,16 @@ struct ThreadRunner {
     _enqueue([f = std::move(f),
               on_done = std::move(on_done),
               on_done_queue = this->_on_done_queue]() mutable {
+      bee::OrError<R> result = bee::try_with(std::move(f));
       on_done_queue->push(
-        [value = f(), on_done = std::move(on_done)]() mutable {
-          on_done(std::move(value));
+        [on_done = std::move(on_done), result = std::move(result)]() mutable {
+          if (result.is_error()) {
+            raise_error(
+              "Unexpected exception thrown from runner: $",
+              result.error().full_msg());
+          } else {
+            on_done(std::move(result.value()));
+          }
         });
     });
   }
@@ -43,7 +51,9 @@ struct ThreadRunner {
   static int num_cpus();
 
  private:
-  void _enqueue(std::function<void()> f);
+  void _enqueue(std::function<void()>&& f);
+
+  void _close();
 
   using queue_type = bee::Queue<std::function<void()>>;
 

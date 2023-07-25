@@ -1,13 +1,13 @@
 #pragma once
 
-#include "bee/error.hpp"
-#include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
-
 #include <set>
 #include <string>
 #include <variant>
 #include <vector>
+
+#include "bee/error.hpp"
+#include "yasf/serializer.hpp"
+#include "yasf/to_stringable_mixin.hpp"
 
 namespace generated_build_config {
 
@@ -21,7 +21,7 @@ struct Cpp : public yasf::ToStringableMixin<Cpp> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
-struct Rule {
+struct Rule : public yasf::ToStringableMixin<Rule> {
   using value_type = std::variant<Cpp>;
 
   value_type value;
@@ -29,6 +29,10 @@ struct Rule {
   Rule() noexcept = default;
   Rule(const value_type& value) noexcept;
   Rule(value_type&& value) noexcept;
+
+  template <std::convertible_to<value_type> U>
+  Rule(U&& value) noexcept : value(std::forward<U>(value))
+  {}
 
   static bee::OrError<Rule> of_yasf_value(const yasf::Value::ptr& config_value);
 

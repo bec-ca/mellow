@@ -1,11 +1,11 @@
 #pragma once
 
+#include <set>
+
 #include "build_rules.hpp"
 #include "package_path.hpp"
 
 #include "yasf/location.hpp"
-
-#include <set>
 
 namespace mellow {
 

@@ -1,16 +1,16 @@
 #pragma once
 
-#include "package_path.hpp"
-#include "progress_ui.hpp"
-#include "thread_runner.hpp"
-
-#include "bee/file_path.hpp"
-
 #include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+
+#include "package_path.hpp"
+#include "progress_ui.hpp"
+#include "thread_runner.hpp"
+
+#include "bee/file_path.hpp"
 
 namespace mellow {
 
@@ -21,7 +21,7 @@ struct BuildTask : public std::enable_shared_from_this<BuildTask> {
   struct Args {
     PackagePath key;
     bee::FilePath root_build_dir;
-    std::function<bee::OrError<bee::Unit>()> run = nullptr;
+    std::function<bee::OrError<>()> run = nullptr;
     std::set<bee::FilePath> inputs = {};
     std::set<bee::FilePath> outputs = {};
     std::string non_file_inputs_key = "";
@@ -30,7 +30,7 @@ struct BuildTask : public std::enable_shared_from_this<BuildTask> {
   BuildTask(
     const PackagePath& key,
     bee::FilePath root_build_dir,
-    std::function<bee::OrError<bee::Unit>()> run,
+    std::function<bee::OrError<>()> run,
     std::set<bee::FilePath> inputs,
     std::set<bee::FilePath> outputs,
     const std::string& non_file_inputs_key,
@@ -42,7 +42,7 @@ struct BuildTask : public std::enable_shared_from_this<BuildTask> {
 
   void enqueue_if_runnable(const ThreadRunner::ptr& runner, bool force_build);
 
-  const bee::OrError<bee::Unit>& error() const;
+  const bee::OrError<>& error() const;
 
   bool is_done() const;
 
@@ -56,25 +56,26 @@ struct BuildTask : public std::enable_shared_from_this<BuildTask> {
 
   bool is_runnable() const;
 
- private:
-  void mark_error(bee::Error error);
+  void clear();
 
-  void dependency_done(
-    const ptr& dep,
-    const std::shared_ptr<ThreadRunner>& runner,
-    bool force_build);
+  bool did_start() const { return _did_start; }
+
+  const std::set<ptr>& depends_on() const { return _depends_on; }
+
+ private:
+  void mark_error(bee::Error&& error);
 
   void add_depends_on(ptr task);
 
   void add_depended_on(ptr task);
 
-  bee::OrError<bee::Unit> _do_run(bool force_build);
+  bee::OrError<> _do_run(bool force_build);
 
   PackagePath _key;
 
   bee::FilePath _root_build_dir;
 
-  std::function<bee::OrError<bee::Unit>()> _run;
+  std::function<bee::OrError<>()> _run;
 
   std::set<bee::FilePath> _inputs;
   std::set<bee::FilePath> _outputs;
@@ -84,7 +85,9 @@ struct BuildTask : public std::enable_shared_from_this<BuildTask> {
   std::set<ptr> _depended_on;
   bool _done = false;
 
-  bee::OrError<bee::Unit> _error = bee::ok();
+  bool _did_start = false;
+
+  bee::OrError<> _error = bee::ok();
   ProgressUI::ptr _progress_ui;
   TaskProgress::ptr _task_progress;
 };

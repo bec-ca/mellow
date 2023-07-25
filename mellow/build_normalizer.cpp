@@ -1,22 +1,21 @@
 #include "build_normalizer.hpp"
 
-#include "bee/file_path.hpp"
+#include <filesystem>
+#include <map>
+#include <string>
+
 #include "generated_mbuild_parser.hpp"
 #include "mbuild_parser.hpp"
 #include "package_path.hpp"
 
+#include "bee/file_path.hpp"
 #include "bee/filesystem.hpp"
 #include "bee/util.hpp"
-
-#include <filesystem>
-#include <map>
-#include <string>
 
 using bee::Error;
 using bee::FilePath;
 using bee::is_one_of_v;
 using bee::OrError;
-using bee::Unit;
 using std::is_same_v;
 using std::map;
 using std::optional;
@@ -54,14 +53,14 @@ OrError<vector<FilePath>> find_package_dirs(
 }
 
 template <class... Ts>
-static Error error_with_loc(
-  const optional<yasf::Location>& loc, const char* format, Ts&&... args)
+static void print_error_with_loc(
+  const optional<yasf::Location>& loc, const char* fmt, Ts&&... args)
 {
-  auto msg = bee::format(format, std::forward<Ts>(args)...);
+  auto msg = F(fmt, std::forward<Ts>(args)...);
   if (loc.has_value()) {
-    return Error::format("$: $", loc->hum(), msg);
+    P("$: $", loc->hum(), msg);
   } else {
-    return Error(msg);
+    P(msg);
   }
 }
 
@@ -83,11 +82,12 @@ OrError<vector<NormalizedRule::ptr>> top_sort(
       for (const auto& dep : rule->deps) {
         auto dep_rule = rules.find(dep);
         if (dep_rule == rules.end()) {
-          return error_with_loc(
+          print_error_with_loc(
             rule->location,
             "Rule '$' depends on unknown rule '$'",
             rule->name,
             dep);
+          return Error("Invalid mbuild");
         }
         if (done.find(dep_rule->second) == done.end()) {
           deps_done = false;
@@ -101,11 +101,12 @@ OrError<vector<NormalizedRule::ptr>> top_sort(
         for (const auto& lib : rule->libs()) {
           auto lib_rule = rules.find(lib);
           if (lib_rule == rules.end()) {
-            return error_with_loc(
+            print_error_with_loc(
               rule->location,
               "Rule '$' depends on unknown lib '$'",
               rule->name,
               lib);
+            return Error("Invalid mbuild");
           }
           transitive_libs.insert(lib_rule->second);
           bee::insert(transitive_libs, lib_rule->second->transitive_libs);
@@ -122,7 +123,7 @@ OrError<vector<NormalizedRule::ptr>> top_sort(
 
     if (!made_progress) {
       // TODO: Identify dependency cycle
-      return Error::format("There is a dependency cycle somewhere");
+      return Error::fmt("There is a dependency cycle somewhere");
     }
   }
   return sorted_rules;
@@ -145,7 +146,7 @@ OrError<NormalizedBuild> BuildNormalizer::normalize_build(
 
   auto read_rules = [this, &rules, &profiles](
                       const bee::FilePath root_source_dir,
-                      bool include_profiles) -> OrError<Unit> {
+                      bool include_profiles) -> OrError<> {
     bail(package_dirs, find_package_dirs(root_source_dir, _mbuild_name));
     for (const auto& dir : package_dirs) {
       bail(package_path, PackagePath::of_filesystem(root_source_dir, dir));
@@ -153,7 +154,7 @@ OrError<NormalizedBuild> BuildNormalizer::normalize_build(
       bail(configs, MbuildParser::from_file(mbuild_path));
       for (const auto& rule : configs) {
         bail_unit(visit(
-          [&]<class T>(const T& specific_rule) -> OrError<Unit> {
+          [&]<class T>(const T& specific_rule) -> OrError<> {
             if constexpr (is_same_v<T, gmp::Profile>) {
               if (include_profiles) { profiles.push_back(specific_rule); }
               return bee::ok();
@@ -171,14 +172,15 @@ OrError<NormalizedBuild> BuildNormalizer::normalize_build(
                 const auto& dup_loc = dup->second->location;
                 string dup_message;
                 if (dup_loc.has_value()) {
-                  dup_message = bee::format(
-                    "\n$: Package also defined here", dup_loc->hum());
+                  dup_message =
+                    F("\n$: Package also defined here", dup_loc->hum());
                 }
-                return error_with_loc(
+                print_error_with_loc(
                   rule.location(),
                   "Duplicated package name $ $",
                   name,
                   dup_message);
+                return Error("Invalid mbuild");
               }
               return bee::ok();
             }
