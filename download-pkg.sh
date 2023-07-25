@@ -16,5 +16,5 @@ cd $tmp_dir
 curl -L -s --show-error -o $pkg_name.tar.gz $url
 tar -xf $pkg_name.tar.gz
 
-rm -rf $pkg_dir$pkg_name
-mv */$pkg_name $pkg_dir$pkg_name
+rm -rf $pkg_dir/$pkg_name
+mv */$pkg_name $pkg_dir/$pkg_name

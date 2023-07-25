@@ -5,6 +5,7 @@ function log {
 }
 
 function build_bootstrap {
+  log "Preparing dependencies..."
   ./get-deps.sh
 
   log "Building bootstrap mellow..."
