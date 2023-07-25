@@ -2,3 +2,5 @@ build
 .build-config
 *.o
 *.d
+.staging
+mellow-with-deps.tar.gz
