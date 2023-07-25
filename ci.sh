@@ -1,6 +1,6 @@
 #!/bin/bash -eu
 
-export CLANG_FORMAT="clang-format-16"
+export CLANG_FORMAT="clang-format"
 
 "$CLANG_FORMAT" --version
 
