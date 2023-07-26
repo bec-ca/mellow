@@ -9,12 +9,12 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache@v3
         with:
             path: build
-            key: ${{ runner.os }}-build-${{ github.ref_name }}
+            key: build-${{ runner.os }}-${{ github.run_id }}
             restore-keys: |
-                ${{ runner.os }}-build-main
+                build-${{ runner.os }}-
 
       - name: Install clang-format16
         run: |
@@ -26,9 +26,3 @@ jobs:
       - name: Run tests
         run: ./ci.sh
         shell: bash
-
-      - name: Save cache
-        uses: actions/cache/save@v3
-        with:
-            path: build
-            key: ${{ runner.os }}-build-${{ github.ref_name }}
