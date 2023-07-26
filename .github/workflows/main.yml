@@ -20,6 +20,7 @@ jobs:
             chmod +x llvm.sh
             sudo ./llvm.sh 16
             sudo apt-get install clang-format-16
+
       - name: Run tests
         run: ./ci.sh
         shell: bash

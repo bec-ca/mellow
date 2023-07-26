@@ -1,14 +1,11 @@
-.PHONY: build install
+MELLOW ?= mellow
+PROFILE ?= dev
 
-INSTALL_DIR=$(HOME)/.mellow/bin
-MELLOW="`./find-mellow.sh`"
+.PHONY: build fetch
 
 build:
-	$(MELLOW) build
+	$(MELLOW) build --profile $(PROFILE)
 
-install:
-	$(MELLOW) build --profile release
-	mkdir -p $(INSTALL_DIR)
-	cp build/release/mellow/mellow "$(INSTALL_DIR)/"
-	@echo "Mellow installed to $(INSTALL_DIR), make sure to include that path in your PATH env variable"
 
+fetch:
+	$(MELLOW) fetch

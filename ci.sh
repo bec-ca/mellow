@@ -1,11 +1,31 @@
 #!/bin/bash -eu
 
-export CLANG_FORMAT="clang-format-16"
+export CLANG_FORMAT=clang-format-16
+export MELLOW=build/mellow.bootstrap
 
-"$CLANG_FORMAT" --version
+function build_bootstrap() {
+  echo "Downloading and compiling mellow..."
+  bootstrap_dir=.bootstrap
+  mellow_dir=$bootstrap_dir/mellow-with-deps
 
-MELLOW=$(./find-mellow.sh)
-echo "Mellow command: $MELLOW"
+  rm -rf $bootstrap_dir
+  mkdir $bootstrap_dir
+  pushd $bootstrap_dir
+  curl -s -L "https://github.com/bec-ca/mellow/releases/download/v0.0.3/mellow-with-deps-v0.0.3.tar.gz" -o mellow-with-deps.tar.gz
+  tar -xf mellow-with-deps.tar.gz
+  popd
 
-$MELLOW fetch
-$MELLOW build
+  pushd $mellow_dir
+  make -j $(nproc) -f Makefile.bootstrap
+  popd
+
+  mkdir -p build
+  cp $mellow_dir/build/bootstrap/mellow/mellow $MELLOW
+}
+
+if ! [ -f $MELLOW ]; then
+  build_bootstrap
+fi
+
+make fetch
+PROFILE=release make

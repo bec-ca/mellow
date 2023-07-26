@@ -95,7 +95,7 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
           "$: External package rule doesn't have a source or a url", loc);
       }
 
-      bee::FileSystem::remove_all(dest);
+      bail_unit(bee::FileSystem::remove_all(dest));
       std::error_code ec;
       fs::copy(
         (source_dir / pkg.name).to_std_path(),
