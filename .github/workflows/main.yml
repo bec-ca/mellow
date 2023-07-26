@@ -31,4 +31,4 @@ jobs:
         uses: actions/cache/save@v3
         with:
             path: build
-            key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+            key: ${{ runner.os }}-build-${{ github.ref_name }}
