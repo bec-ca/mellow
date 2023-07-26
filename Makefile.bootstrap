@@ -21,7 +21,7 @@ $(MELLOW): $(OBJECTS)
 	@echo "Linking $@..."
 	@$(CXX) $(OBJECTS) $(CXXFLAGS) $(LDFLAGS) -o "$@"
 
-$(OUTPUT_DIR)/%.o: %.cpp Makefile
+$(OUTPUT_DIR)/%.o: %.cpp Makefile.bootstrap
 	@echo "Compiling $<..."
 	@mkdir -p `dirname $@`
 	@$(CXX) $(CXXFLAGS) -c "$<" -MMD -MF "$@.d" -o "$@"
