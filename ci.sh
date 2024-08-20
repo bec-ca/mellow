@@ -1,10 +1,14 @@
 #!/bin/bash -eux
 
 export CXX=clang-18
-export CLANG_FORMAT=clang-format-18
-export LDLAGS="-lstdc++ -lm"
 
-MELLOW_VERSION="v0.0.6"
+if command -v clang-format-18 &> /dev/null; then
+  export CLANG_FORMAT=clang-format-18
+fi
+
+export LDFLAGS="${LDFLAGS:-} -lstdc++ -lm"
+
+MELLOW_VERSION="v0.0.7"
 
 export MELLOW=build/mellow-bootstrap-$MELLOW_VERSION
 
