@@ -1,20 +1,21 @@
 #include "build_normalizer.hpp"
 
-#include <filesystem>
 #include <map>
 #include <string>
 
-#include "generated_mbuild_parser.hpp"
 #include "mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
+#include "normalized_rule.hpp"
 #include "package_path.hpp"
 
 #include "bee/file_path.hpp"
 #include "bee/filesystem.hpp"
+#include "bee/print.hpp"
+#include "bee/string_util.hpp"
 #include "bee/util.hpp"
 
 using bee::Error;
 using bee::FilePath;
-using bee::is_one_of_v;
 using bee::OrError;
 using std::is_same_v;
 using std::map;
@@ -39,14 +40,12 @@ OrError<vector<FilePath>> find_package_dirs(
   bail(regular_files, bee::FileSystem::list_dir(root_package_dir));
 
   for (const auto& p : regular_files.directories) {
-    if (ignore_dirs.contains(p.filename()) || p.filename().starts_with(".")) {
-      continue;
-    }
-    bail(subdirs, find_package_dirs(p, mbuild_name));
+    if (ignore_dirs.contains(p) || p.starts_with(".")) { continue; }
+    bail(subdirs, find_package_dirs(root_package_dir / p, mbuild_name));
     concat(output, subdirs);
   }
   for (const auto& p : regular_files.regular_files) {
-    if (p.filename() == mbuild_name) { output.push_back(p.parent()); }
+    if (p == mbuild_name) { output.push_back(root_package_dir); }
   }
 
   return output;
@@ -57,11 +56,8 @@ static void print_error_with_loc(
   const optional<yasf::Location>& loc, const char* fmt, Ts&&... args)
 {
   auto msg = F(fmt, std::forward<Ts>(args)...);
-  if (loc.has_value()) {
-    P("$: $", loc->hum(), msg);
-  } else {
-    P(msg);
-  }
+  if (loc.has_value()) { msg = F("$: $", loc->hum(), msg); }
+  P(msg);
 }
 
 OrError<vector<NormalizedRule::ptr>> top_sort(
@@ -123,7 +119,13 @@ OrError<vector<NormalizedRule::ptr>> top_sort(
 
     if (!made_progress) {
       // TODO: Identify dependency cycle
-      return Error::fmt("There is a dependency cycle somewhere");
+      std::vector<PackagePath> remaining;
+      for (const auto& rule : sorted_rules) {
+        if (!done.contains(rule)) { remaining.push_back(rule->name); }
+      }
+      return EF(
+        "There is a dependency cycle somewhere, remaining rules: $",
+        bee::join(remaining, "\n"));
     }
   }
   return sorted_rules;
@@ -139,33 +141,34 @@ BuildNormalizer::BuildNormalizer(
 {}
 
 OrError<NormalizedBuild> BuildNormalizer::normalize_build(
-  const FilePath& root_package_dir)
+  const FilePath& repo_root_dir)
 {
-  vector<gmp::Profile> profiles;
+  vector<types::Profile> profiles;
   map<PackagePath, NormalizedRule::ptr> rules;
 
-  auto read_rules = [this, &rules, &profiles](
-                      const bee::FilePath root_source_dir,
+  auto read_rules = [this, &rules, &profiles, &repo_root_dir](
+                      const bee::FilePath& root_package_dir,
                       bool include_profiles) -> OrError<> {
-    bail(package_dirs, find_package_dirs(root_source_dir, _mbuild_name));
+    bail(package_dirs, find_package_dirs(root_package_dir, _mbuild_name));
     for (const auto& dir : package_dirs) {
-      bail(package_path, PackagePath::of_filesystem(root_source_dir, dir));
+      bail(package_path, PackagePath::of_filesystem(root_package_dir, dir));
       auto mbuild_path = dir / _mbuild_name;
       bail(configs, MbuildParser::from_file(mbuild_path));
       for (const auto& rule : configs) {
         bail_unit(visit(
           [&]<class T>(const T& specific_rule) -> OrError<> {
-            if constexpr (is_same_v<T, gmp::Profile>) {
+            if constexpr (is_same_v<T, types::Profile>) {
               if (include_profiles) { profiles.push_back(specific_rule); }
               return bee::ok();
-            } else if constexpr (is_same_v<T, gmp::ExternalPackage>) {
+            } else if constexpr (is_same_v<T, types::ExternalPackage>) {
               return bee::ok();
             } else {
               auto rule = rules::Rule(specific_rule, package_path);
               auto name = rule.name();
 
-              auto normalized =
-                NormalizedRule::ptr(new NormalizedRule(name, dir, rule));
+              auto rel_dir = dir.relative_to(repo_root_dir);
+              auto normalized = std::make_shared<NormalizedRule>(
+                name, rel_dir, root_package_dir, rule);
               auto insert_res = rules.insert({name, normalized});
               if (!insert_res.second) {
                 auto dup = rules.find(name);
@@ -191,7 +194,7 @@ OrError<NormalizedBuild> BuildNormalizer::normalize_build(
     return bee::ok();
   };
 
-  bail_unit(read_rules(root_package_dir, true));
+  bail_unit(read_rules(repo_root_dir, true));
   if (bee::FileSystem::exists(_external_packages_dir)) {
     bail_unit(read_rules(_external_packages_dir, false));
   }

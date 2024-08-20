@@ -10,6 +10,7 @@
 #include "bee/filesystem.hpp"
 #include "bee/format.hpp"
 #include "bee/format_vector.hpp"
+#include "bee/print.hpp"
 #include "bee/sub_process.hpp"
 #include "command/command_builder.hpp"
 #include "command/file_path.hpp"
@@ -43,8 +44,8 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
     bail(rules, MbuildParser::from_file(dir / Defaults::mbuild_name));
     for (auto& rule : rules) {
       auto pkg_opt =
-        rule.visit([&]<class T>(T& rule) -> optional<gmp::ExternalPackage> {
-          if constexpr (is_same_v<T, gmp::ExternalPackage>) {
+        rule.visit([&]<class T>(T& rule) -> optional<types::ExternalPackage> {
+          if constexpr (is_same_v<T, types::ExternalPackage>) {
             return rule;
           } else {
             return std::nullopt;
@@ -63,14 +64,14 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
 
       FilePath source_dir;
       if (pkg.source.has_value()) {
-        source_dir = FilePath::of_string(*pkg.source);
+        source_dir = FilePath(*pkg.source);
       } else if (pkg.url.has_value()) {
         auto pkg_tmp_dir = tmp_dir / pkg.name;
         bail_unit(bee::FileSystem::remove_all(pkg_tmp_dir));
         bail_unit(bee::FileSystem::mkdirs(pkg_tmp_dir));
         auto download_file = (pkg_tmp_dir / (pkg.name + ".tar.gz")).to_string();
         bail_unit(bee::SubProcess::run(
-          {.cmd = FilePath::of_string("curl"),
+          {.cmd = FilePath("curl"),
            .args = {
              *pkg.url,
              "--location",
@@ -79,7 +80,7 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
              "--output",
              download_file}}));
         bail_unit(bee::SubProcess::run(
-          {.cmd = FilePath::of_string("tar"),
+          {.cmd = FilePath("tar"),
            .args = {"-C", pkg_tmp_dir.to_string(), "-xzf", download_file}}));
         bail(content, bee::FileSystem::list_dir(pkg_tmp_dir));
         if (content.directories.size() != 1) {
@@ -89,7 +90,7 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
             loc,
             content.directories);
         }
-        source_dir = content.directories[0];
+        source_dir = pkg_tmp_dir / content.directories[0];
       } else {
         return Error::fmt(
           "$: External package rule doesn't have a source or a url", loc);
@@ -110,7 +111,7 @@ OrError<> fetch_external_packges(const FilePath& output_dir)
     return ok();
   };
 
-  dirs.push(FilePath::of_string("."));
+  dirs.push(FilePath("."));
 
   while (!dirs.empty()) {
     auto dir = dirs.front();
@@ -128,10 +129,10 @@ using command::CommandBuilder;
 
 Cmd FetchCommand::command()
 {
-  using namespace command::flags;
+  namespace f = command::flags;
   auto builder = CommandBuilder("Fetch external pacakges");
   auto output_dir = builder.optional_with_default(
-    "--output-dir", file_path, Defaults::output_dir());
+    "--output-dir", f::FilePath, Defaults::output_dir());
   return builder.run([=]() { return fetch_external_packges(*output_dir); });
 }
 

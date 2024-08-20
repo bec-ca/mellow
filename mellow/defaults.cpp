@@ -11,6 +11,6 @@ FilePath Defaults::external_packages_dir(const FilePath& output_dir)
   return output_dir / "external-packages";
 }
 
-FilePath Defaults::output_dir() { return FilePath::of_string("build"); }
+FilePath Defaults::output_dir() { return FilePath("build"); }
 
 } // namespace mellow

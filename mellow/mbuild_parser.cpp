@@ -21,10 +21,8 @@ using Rules = MbuildParser::Rules;
 OrError<Rules> MbuildParser::from_string(
   const FilePath& filename, const string& content)
 {
-  bail(
-    parsed,
-    yasf::ConfigParser::parse_from_string(filename.to_std_path(), content));
-  return yasf::des<vector<gmp::Rule>>(parsed);
+  bail(parsed, yasf::ConfigParser::parse_from_string(filename, content));
+  return yasf::des<vector<types::Rule>>(parsed);
 }
 
 OrError<Rules> MbuildParser::from_file(const FilePath& filename)
@@ -40,7 +38,7 @@ string MbuildParser::to_string(const Rules& config)
 
 OrError<> MbuildParser::to_file(const FilePath& filename, const Rules& config)
 {
-  return bee::FileWriter::save_file(filename, to_string(config));
+  return bee::FileWriter::write_file(filename, to_string(config));
 }
 
 } // namespace mellow

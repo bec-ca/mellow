@@ -1,0 +1,11 @@
+ns mellow.generated
+
+record Cpp {
+  compiler file_path;
+  cpp_flags str vector optional;
+  ld_flags str vector optional;
+}
+
+variant Rule {
+  cpp Cpp;
+}

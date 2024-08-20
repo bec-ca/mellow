@@ -1,4 +1,4 @@
-#include "generated_build_hash.hpp"
+#include "build_hash.generated.hpp"
 
 #include <type_traits>
 
@@ -6,11 +6,10 @@
 #include "bee/util.hpp"
 #include "yasf/parser_helpers.hpp"
 #include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
 
 using PH = yasf::ParserHelper;
 
-namespace generated_build_hash {
+namespace mellow {
 
 ////////////////////////////////////////////////////////////////////////////////
 // FileHash
@@ -24,7 +23,7 @@ bee::OrError<FileHash> FileHash::of_yasf_value(const yasf::Value::ptr& value)
 
   std::optional<std::string> output_name;
   std::optional<std::string> output_hash;
-  std::optional<bee::Time> output_mtime;
+  std::optional<yasf::Time> output_mtime;
 
   for (const auto& element : value->list()) {
     if (!element->is_key_value()) {
@@ -47,7 +46,7 @@ bee::OrError<FileHash> FileHash::of_yasf_value(const yasf::Value::ptr& value)
       if (output_mtime.has_value()) {
         return PH::err("Field 'mtime' is defined more than once", element);
       }
-      bail_assign(output_mtime, yasf::des<bee::Time>(kv.value));
+      bail_assign(output_mtime, yasf::des<yasf::Time>(kv.value));
     } else {
       return PH::err("No such field in record of type FileHash", element);
     }
@@ -73,9 +72,9 @@ bee::OrError<FileHash> FileHash::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr FileHash::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(fields, yasf::ser<std::string>(hash), "hash");
-  PH::push_back_field(fields, yasf::ser<bee::Time>(mtime), "mtime");
+  PH::push_back_field(fields, yasf::ser(name), "name");
+  PH::push_back_field(fields, yasf::ser(hash), "hash");
+  PH::push_back_field(fields, yasf::ser(mtime), "mtime");
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
 
@@ -140,14 +139,10 @@ bee::OrError<TaskHash> TaskHash::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr TaskHash::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<FileHash>>(inputs), "inputs");
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<FileHash>>(outputs), "outputs");
-  PH::push_back_field(fields, yasf::ser<std::string>(flags_hash), "flags_hash");
+  PH::push_back_field(fields, yasf::ser(inputs), "inputs");
+  PH::push_back_field(fields, yasf::ser(outputs), "outputs");
+  PH::push_back_field(fields, yasf::ser(flags_hash), "flags_hash");
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
 
-} // namespace generated_build_hash
-
-// olint-allow: missing-package-namespace
+} // namespace mellow

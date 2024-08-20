@@ -1,6 +1,6 @@
 #include "build_rules.hpp"
 
-#include "generated_mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
 #include "package_path.hpp"
 
 #include "bee/util.hpp"
@@ -26,18 +26,18 @@ Rule::rule_variant make_rule_variant(
   return visit(
     [&path](auto& rule) -> Rule::rule_variant {
       using T = decay_t<decltype(rule)>;
-      if constexpr (is_same_v<T, gmp::CppBinary>) {
+      if constexpr (is_same_v<T, types::CppBinary>) {
         return CppBinary(rule, path);
-      } else if constexpr (is_same_v<T, gmp::CppLibrary>) {
+      } else if constexpr (is_same_v<T, types::CppLibrary>) {
         return CppLibrary(rule, path);
-      } else if constexpr (is_same_v<T, gmp::CppTest>) {
+      } else if constexpr (is_same_v<T, types::CppTest>) {
         return CppTest(rule, path);
-      } else if constexpr (is_same_v<T, gmp::GenRule>) {
+      } else if constexpr (is_same_v<T, types::GenRule>) {
         return GenRule(rule, path);
-      } else if constexpr (is_same_v<T, gmp::SystemLib>) {
+      } else if constexpr (is_same_v<T, types::SystemLib>) {
         return SystemLib(rule, path);
       } else {
-        static_assert(bee::always_false_v<T> && "non exaustive visit");
+        static_assert(bee::always_false<T> && "non exaustive visit");
       }
     },
     rs);
@@ -45,58 +45,42 @@ Rule::rule_variant make_rule_variant(
 
 template <class T>
 concept HasSources = requires(T t) {
-  {
-    t.sources()
-  };
+  { t.sources() };
 };
 
 template <class T>
 concept HasLibs = requires(T t) {
-  {
-    t.libs()
-  };
+  { t.libs() };
 };
 
 template <class T>
 concept HasHeaders = requires(T t) {
-  {
-    t.headers()
-  };
+  { t.headers() };
 };
 
 template <class T>
 concept HasLdFlags = requires(T t) {
-  {
-    t.ld_flags
-  };
+  { t.ld_flags };
 };
 
 template <class T>
 concept HasCppFlags = requires(T t) {
-  {
-    t.cpp_flags
-  };
+  { t.cpp_flags };
 };
 
 template <class T>
 concept HasAdditionalDeps = requires(T t) {
-  {
-    t.additional_deps()
-  };
+  { t.additional_deps() };
 };
 
 template <class T>
 concept HasOutputCppObjects = requires(T t) {
-  {
-    t.output_cpp_object()
-  };
+  { t.output_cpp_object() };
 };
 
 template <class T>
 concept HasName = requires(T t) {
-  {
-    t.name()
-  } -> std::convertible_to<PackagePath>;
+  { t.name() } -> std::convertible_to<PackagePath>;
 };
 
 template <class T>
@@ -105,13 +89,16 @@ concept HasOutputs = requires(T t) { t.outputs(); };
 template <class T>
 concept HasOsFilter = requires(T t) { t.os_filter(); };
 
+template <class T>
+concept HasData = requires(T t) { t.data(); };
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // CppBinary
 //
 
-CppBinary::CppBinary(const gmp::CppBinary& p, const PackagePath& path)
+CppBinary::CppBinary(const types::CppBinary& p, const PackagePath& path)
     : BaseRule(p, path)
 {}
 
@@ -127,7 +114,7 @@ static_assert(HasSources<CppBinary>);
 
 namespace details {
 
-CppLibraryBase::CppLibraryBase(const gmp::CppLibrary& format)
+CppLibraryBase::CppLibraryBase(const types::CppLibrary& format)
     : CppLibrary(format)
 {}
 
@@ -139,7 +126,7 @@ optional<string> CppLibraryBase::output_cpp_object() const
 
 } // namespace details
 
-CppLibrary::CppLibrary(const gmp::CppLibrary& p, const PackagePath& path)
+CppLibrary::CppLibrary(const types::CppLibrary& p, const PackagePath& path)
     : BaseRule(p, path)
 {}
 
@@ -155,18 +142,16 @@ static_assert(HasSources<CppLibrary>);
 // CppTest
 //
 
-CppTest::CppTest(const gmp::CppTest& p, const PackagePath& path)
+CppTest::CppTest(const types::CppTest& p, const PackagePath& path)
     : BaseRule(p, path)
 {}
 
 CppTest::~CppTest() {}
 
-const std::vector<std::string>& CppTest::os_filter() const
+const std::vector<types::OS>& CppTest::os_filter() const
 {
   return raw().os_filter;
 }
-
-std::vector<std::string>& CppTest::os_filter() { return raw().os_filter; }
 
 static_assert(HasName<CppTest>);
 
@@ -174,13 +159,13 @@ static_assert(HasName<CppTest>);
 // GenRule
 //
 
-GenRule::GenRule(const gmp::GenRule& p, const PackagePath& path)
+GenRule::GenRule(const types::GenRule& p, const PackagePath& path)
     : BaseRule(p, path)
 {}
 
 GenRule::~GenRule() {}
 
-set<string> GenRule::additional_deps() const { return {raw().binary}; }
+set<PackagePath> GenRule::additional_deps() const { return {binary()}; }
 
 static_assert(HasName<GenRule>);
 static_assert(HasOutputs<GenRule>);
@@ -191,13 +176,13 @@ static_assert(HasOutputs<GenRule>);
 
 namespace details {
 
-SystemLibBase::SystemLibBase(const gmp::SystemLib& format) : SystemLib(format)
+SystemLibBase::SystemLibBase(const types::SystemLib& format) : SystemLib(format)
 {}
 
 string SystemLibBase::system_lib_config() const { return name + ".output"; }
 
 } // namespace details
-SystemLib::SystemLib(const gmp::SystemLib& p, const PackagePath& path)
+SystemLib::SystemLib(const types::SystemLib& p, const PackagePath& path)
     : BaseRule(p, path)
 {}
 
@@ -215,7 +200,7 @@ static_assert(details::HasSystemLibConfig<SystemLib>);
 // ExternalPackage
 //
 
-ExternalPackage::ExternalPackage(const gmp::ExternalPackage& format)
+ExternalPackage::ExternalPackage(const types::ExternalPackage& format)
     : BaseRule(format, PackagePath::root())
 {}
 
@@ -231,10 +216,12 @@ Rule::Rule(const Rule::format_variant& r, const PackagePath& path)
 
 Rule::~Rule() {}
 
-gmp::Rule Rule::to_format() const
+types::Rule Rule::to_format() const
 {
-  return gmp::Rule(visit(
-    []<class T>(const T& rule) -> gmp::Rule::value_type { return rule.raw(); },
+  return types::Rule(visit(
+    []<class T>(const T& rule) -> types::Rule::value_type {
+      return rule.raw();
+    },
     rule));
 }
 
@@ -303,14 +290,14 @@ set<PackagePath> Rule::deps() const
 {
   auto additional_deps = visit(
     []<class T>(const T& rule) -> set<PackagePath> {
-      if constexpr (std::is_same_v<T, GenRule>) {
-        return {rule.binary()};
+      if constexpr (HasAdditionalDeps<T>) {
+        return rule.additional_deps();
       } else {
         return {};
       }
     },
     rule);
-  return bee::compose_set(libs(), additional_deps);
+  return bee::compose_set<PackagePath>(libs(), std::move(additional_deps));
 }
 
 vector<string> Rule::ld_flags() const
@@ -365,10 +352,10 @@ optional<PackagePath> Rule::system_lib_config() const
     rule);
 }
 
-vector<string> Rule::os_filter() const
+vector<types::OS> Rule::os_filter() const
 {
   return visit(
-    []<class T>(const T& rule) -> vector<string> {
+    []<class T>(const T& rule) -> vector<types::OS> {
       if constexpr (HasOsFilter<T>) {
         return rule.os_filter();
       } else {
@@ -383,6 +370,19 @@ const optional<yasf::Location>& Rule::location() const
   return visit(
     []<class T>(const T& rule) -> const optional<yasf::Location>& {
       return rule.location();
+    },
+    rule);
+}
+
+set<string> Rule::data() const
+{
+  return visit(
+    []<class T>(const T& rule) -> set<string> {
+      if constexpr (HasData<T>) {
+        return rule.data();
+      } else {
+        return {};
+      }
     },
     rule);
 }

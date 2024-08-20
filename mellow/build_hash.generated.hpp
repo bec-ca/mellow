@@ -5,17 +5,17 @@
 #include <variant>
 #include <vector>
 
-#include "bee/error.hpp"
-#include "bee/time.hpp"
+#include "bee/or_error.hpp"
 #include "yasf/serializer.hpp"
+#include "yasf/time.hpp"
 #include "yasf/to_stringable_mixin.hpp"
 
-namespace generated_build_hash {
+namespace mellow {
 
 struct FileHash : public yasf::ToStringableMixin<FileHash> {
   std::string name;
   std::string hash;
-  bee::Time mtime;
+  yasf::Time mtime;
 
   static bee::OrError<FileHash> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -34,6 +34,4 @@ struct TaskHash : public yasf::ToStringableMixin<TaskHash> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
-} // namespace generated_build_hash
-
-// olint-allow: missing-package-namespace
+} // namespace mellow

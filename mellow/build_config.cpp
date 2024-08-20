@@ -1,14 +1,7 @@
 #include "build_config.hpp"
 
-#include <filesystem>
-
-#include "bee/file_reader.hpp"
 #include "bee/file_writer.hpp"
-#include "bee/string_util.hpp"
-#include "bee/util.hpp"
 #include "yasf/config_parser.hpp"
-
-namespace fs = std::filesystem;
 
 using std::get;
 using std::holds_alternative;
@@ -27,32 +20,33 @@ bee::OrError<BuildConfig> BuildConfig::of_yasf_value(
   const yasf::Value::ptr& value)
 {
   BuildConfig config;
-  bail_assign(config.rules, yasf::des<vector<bc::Rule>>(value));
+  bail_assign(config.rules, yasf::des<vector<generated::Rule>>(value));
   return config;
 }
 
-bc::Cpp BuildConfig::cpp_config() const
+generated::Cpp BuildConfig::cpp_config() const
 {
   for (const auto& config : rules) {
-    if (holds_alternative<bc::Cpp>(config.value)) {
-      return get<bc::Cpp>(config.value);
+    if (holds_alternative<generated::Cpp>(config.value)) {
+      return get<generated::Cpp>(config.value);
     }
   }
-  return bc::Cpp{
-    .compiler = "g++",
+  return {
+    .compiler = bee::FilePath("g++"),
   };
 }
 
-bee::OrError<BuildConfig> BuildConfig::load_from_file(const fs::path& filename)
+bee::OrError<BuildConfig> BuildConfig::load_from_file(
+  const bee::FilePath& filename)
 {
   bail(parsed, yasf::ConfigParser::parse_from_file(filename));
   return of_yasf_value(parsed);
 }
 
-bee::OrError<> BuildConfig::write_to_file(const fs::path& filename) const
+bee::OrError<> BuildConfig::write_to_file(const bee::FilePath& filename) const
 {
-  return bee::FileWriter::save_file(
-    bee::FilePath::of_std_path(filename), to_yasf_value()->to_string_hum());
+  return bee::FileWriter::write_file(
+    filename, to_yasf_value()->to_string_hum());
 }
 
 } // namespace mellow

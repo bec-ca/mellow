@@ -1,24 +1,23 @@
 #pragma once
 
-#include <filesystem>
 #include <optional>
-#include <vector>
 
-#include "bee/error.hpp"
 #include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
 
 namespace mellow {
 
 struct BuildEngine {
   struct Args {
-    bee::FilePath root_source_dir;
+    bee::FilePath repo_root_dir;
     std::string mbuild_name;
-    std::string build_config;
+    bee::FilePath build_config;
     std::optional<std::string> profile_name;
     bee::FilePath output_dir_base;
     bee::FilePath external_packages_dir;
     bool verbose;
     bool force_build;
+    bool force_test;
     bool update_test_output;
   };
 

@@ -1,76 +1,64 @@
 #include "build_engine.hpp"
 
-#include <chrono>
-#include <filesystem>
 #include <future>
 #include <map>
+#include <memory>
 #include <optional>
-#include <ratio>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "build_config.hpp"
 #include "build_normalizer.hpp"
-#include "build_task.hpp"
 #include "generate_build_config.hpp"
-#include "generated_mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
 #include "package_path.hpp"
+#include "runable_rule.hpp"
 #include "task_manager.hpp"
 
-#include "bee/error.hpp"
 #include "bee/file_reader.hpp"
-#include "bee/file_writer.hpp"
 #include "bee/filesystem.hpp"
-#include "bee/format_filesystem.hpp"
-#include "bee/format_set.hpp"
+#include "bee/format_optional.hpp"
 #include "bee/format_vector.hpp"
+#include "bee/or_error.hpp"
 #include "bee/os.hpp"
+#include "bee/print.hpp"
 #include "bee/string_util.hpp"
 #include "bee/sub_process.hpp"
 #include "bee/util.hpp"
 #include "diffo/diff.hpp"
 #include "yasf/cof.hpp"
 
-using bee::always_false_v;
-using bee::compose_set;
 using bee::compose_vector;
 using bee::concat;
 using bee::concat_many;
 using bee::FilePath;
 using bee::FileReader;
 using bee::FileSystem;
-using bee::FileWriter;
-using bee::insert;
 using bee::Span;
-using bee::SubProcess;
-using std::map;
-using std::nullopt;
 using std::optional;
-using std::promise;
 using std::set;
-using std::shared_ptr;
 using std::string;
-using std::thread;
 using std::vector;
-
-namespace fs = std::filesystem;
 
 namespace mellow {
 namespace {
 
 struct CommandRunner {
   struct Args {
-    const FilePath& output_prefix;
-    const FilePath cmd;
-    const vector<string>& args = {};
-    const optional<FilePath>& cwd = nullopt;
-    const Span timeout;
-    const bool verbose;
+    FilePath output_prefix;
+    FilePath cmd;
+    vector<string> args{};
+    optional<FilePath> cwd{};
+    set<FilePath> data{};
+    Span timeout;
+    bool verbose{false};
   };
   const FilePath cmd;
   const vector<string> args;
   const optional<FilePath> cwd;
+
+  const set<FilePath> data;
 
   const FilePath stdout_path;
   const FilePath stderr_path;
@@ -78,10 +66,11 @@ struct CommandRunner {
   const Span timeout;
   const bool verbose;
 
-  CommandRunner(const Args& args)
-      : cmd(args.cmd),
-        args(args.args),
-        cwd(args.cwd),
+  CommandRunner(Args&& args)
+      : cmd(std::move(args.cmd)),
+        args(std::move(args.args)),
+        cwd(std::move(args.cwd)),
+        data(std::move(args.data)),
         stdout_path(args.output_prefix + ".stdout"),
         stderr_path(args.output_prefix + ".stderr"),
         timeout(args.timeout),
@@ -105,9 +94,10 @@ struct CommandRunner {
         auto stderr_content = FileReader::read_file(stderr_path).value_or("");
         auto stdout_content = FileReader::read_file(stdout_path).value_or("");
         return bee::Error::fmt(
-          "Command '$ $' failed, error:'$', stderr:\n$\nstdout:\n$",
+          "Command '$ $' cwd:$ failed, error:'$', stderr:\n$\nstdout:\n$",
           cmd,
           args,
+          cwd,
           err,
           stderr_content,
           stdout_content);
@@ -117,7 +107,20 @@ struct CommandRunner {
     bail_unit(FileSystem::mkdirs(stdout_path.parent()));
     bail_unit(FileSystem::mkdirs(stderr_path.parent()));
     if (verbose) { P("Running $ $...", cmd, args); }
-    auto ret = SubProcess::spawn({
+
+    if (cwd.has_value()) {
+      bail_unit(FileSystem::mkdirs(*cwd));
+      for (const auto& d : data) {
+        auto link = *cwd / d.filename();
+        if (bee::FileSystem::exists(link)) {
+          bail_unit(bee::FileSystem::remove(link));
+        }
+        std::error_code err;
+        bail_unit(bee::FileSystem::create_symlink(d, link));
+      }
+    }
+
+    auto ret = bee::SubProcess::spawn({
       .cmd = cmd,
       .args = args,
       .stdout_spec = stdout_path,
@@ -128,16 +131,16 @@ struct CommandRunner {
     if (ret.is_error()) { return tag_error(ret.error()); }
     auto& pid = ret.value();
 
-    promise<bee::OrError<>> wait_result_promise;
+    std::promise<bee::OrError<>> wait_result_promise;
     auto wait_result = wait_result_promise.get_future();
 
-    thread waiter_thread(
+    std::thread waiter_thread(
       [pid, wait_result_promise = std::move(wait_result_promise)]() mutable {
         try {
           auto ret = pid->wait();
           wait_result_promise.set_value(std::move(ret));
         } catch (const std::exception& exn) {
-          wait_result_promise.set_value(exn);
+          wait_result_promise.set_value(bee::Error(exn));
         }
       });
 
@@ -181,37 +184,32 @@ bee::OrError<> copy_if_differs(const FilePath& from, const FilePath& to)
   return FileSystem::copy(from, to);
 }
 
-struct RunTest {
+struct RunTest final : public RunableRule {
   const CommandRunner run_command;
 
   struct Args {
-    const PackagePath& rule_name;
-    const FilePath& root_build_dir;
-    const FilePath& test_binary;
-    const FilePath& expected;
+    PackagePath rule_name;
+    FilePath root_build_dir;
+    FilePath test_binary;
+    FilePath expected;
     bool update_test_output;
   };
 
   const FilePath expected;
-  const FilePath diff_output;
-  const FilePath ok_path;
   const bool update_test_output;
 
-  RunTest(const Args& args)
-      : run_command({
+  RunTest(Args&& args)
+      : RunableRule(true),
+        run_command({
           .output_prefix = args.rule_name.to_filesystem(args.root_build_dir),
           .cmd = args.test_binary,
           .timeout = Span::of_minutes(1),
         }),
         expected(args.expected),
-        diff_output(args.rule_name.append_no_sep(".diff").to_filesystem(
-          args.root_build_dir)),
-        ok_path(args.rule_name.append_no_sep(".ok").to_filesystem(
-          args.root_build_dir)),
         update_test_output(args.update_test_output)
   {}
 
-  bee::OrError<> operator()() const
+  virtual bee::OrError<> run() const override
   {
     auto result = run_command();
     if (result.is_error()) { return result.error(); }
@@ -222,57 +220,76 @@ struct RunTest {
     bail(
       diff,
       diffo::Diff::diff_files(
-        expected.to_std_path(), stdout_path.to_std_path()));
-    if (diff.empty()) { return FileSystem::touch_file(ok_path); }
+        expected,
+        stdout_path,
+        {.treat_missing_files_as_empty = true, .context_lines = 0}));
 
-    vector<string> msg;
-
-    for (const auto& diff_line : diff) {
-      if (diff_line.action == diffo::Action::Equal) { continue; }
-      msg.push_back(
-        F("$:$: $ $",
-          expected,
-          diff_line.line_number,
-          diffo::Diff::action_prefix(diff_line.action),
-          diff_line.line));
+    if (!diff.empty()) {
+      vector<string> msg;
+      for (const auto& chunk : diff) {
+        for (const auto& diff_line : chunk.lines) {
+          msg.push_back(
+            F("$:$: $ $",
+              expected,
+              diff_line.line_number,
+              diffo::Diff::action_prefix(diff_line.action),
+              diff_line.line));
+        }
+      }
+      return bee::Error::fmt("Test failed:\n$", bee::join(msg, "\n"));
     }
-    return bee::Error::fmt("Test failed:\n$", bee::join(msg, "\n"));
+
+    return bee::ok();
   }
 };
 
-struct RunGenRule {
-  const FilePath binary;
-  const vector<string> flags;
-  const FilePath root_build_dir;
-  const NormalizedRule::ptr nrule;
-  const vector<string> outputs;
+struct RunGenRule final : public RunableRule {
+  struct Args {
+    FilePath binary;
+    vector<string> flags;
+    FilePath root_build_dir;
+    FilePath repo_root_dir;
+    NormalizedRule::ptr nrule;
+    vector<string> outputs;
+  };
+
+  RunGenRule(Args&& args) : RunableRule(false), _args(std::move(args)) {}
 
   struct output_info {
     FilePath path;
     FilePath run_dir_path;
   };
 
-  bee::OrError<> operator()() const
+  virtual bee::OrError<> run() const override
   {
-    FilePath run_dir = nrule->package_name.to_filesystem(root_build_dir);
+    FilePath run_dir =
+      _args.nrule->package_name.to_filesystem(_args.root_build_dir);
+
+    set<FilePath> abs_data;
+    for (const auto& d : _args.nrule->data()) {
+      abs_data.insert(_args.repo_root_dir / d);
+    }
 
     const CommandRunner run_command({
       .output_prefix = run_dir,
-      .cmd = binary,
-      .args = flags,
+      .cmd = _args.binary,
+      .args = _args.flags,
       .cwd = run_dir,
+      .data = abs_data,
       .timeout = Span::of_minutes(1),
     });
 
     vector<output_info> output_info;
-    for (const auto& output_name : outputs) {
-      auto output = nrule->package_name / output_name;
+    for (const auto& output_name : _args.outputs) {
+      auto output = _args.nrule->package_name / output_name;
       output_info.push_back(
-        {.path = nrule->package_dir / output_name,
-         .run_dir_path = output.to_filesystem(root_build_dir)});
+        {.path = _args.nrule->package_dir / output_name,
+         .run_dir_path = output.to_filesystem(_args.root_build_dir)});
     }
     for (const auto& output : output_info) {
-      FileSystem::remove(output.run_dir_path);
+      if (FileSystem::exists(output.run_dir_path)) {
+        bail_unit(FileSystem::remove(output.run_dir_path));
+      }
     }
     bail_unit(run_command());
     for (const auto& output : output_info) {
@@ -285,6 +302,9 @@ struct RunGenRule {
     }
     return bee::ok();
   }
+
+ private:
+  const Args _args;
 };
 
 struct SystemLibConfig {
@@ -309,19 +329,23 @@ struct SystemLibConfig {
   }
 };
 
-struct RunSystemLib {
-  const FilePath root_build_dir;
-  const gmp::SystemLib rrule;
-  const PackagePath system_lib_config;
+struct RunSystemLib final : public RunableRule {
+  struct Args {
+    FilePath root_build_dir;
+    types::SystemLib rrule;
+    PackagePath system_lib_config;
+  };
 
-  bee::OrError<> operator()() const
+  RunSystemLib(Args&& args) : RunableRule(false), _args(std::move(args)) {}
+
+  virtual bee::OrError<> run() const override
   {
     auto run = [&](const string& arg) -> bee::OrError<vector<string>> {
-      auto system_lib_config = SubProcess::OutputToString::create();
-      auto stderr_spec = SubProcess::OutputToString::create();
-      auto args = compose_vector(rrule.flags, arg);
-      auto ret = SubProcess::run({
-        .cmd = rrule.command,
+      auto system_lib_config = bee::SubProcess::OutputToString::create();
+      auto stderr_spec = bee::SubProcess::OutputToString::create();
+      auto args = compose_vector(_args.rrule.flags, arg);
+      auto ret = bee::SubProcess::run({
+        .cmd = _args.rrule.command,
         .args = args,
         .stdout_spec = system_lib_config,
         .stderr_spec = stderr_spec,
@@ -337,50 +361,49 @@ struct RunSystemLib {
     bail(libs, run("--libs"));
     bail(cflags, run("--cflags"));
 
-    auto content = yasf::Cof::serialize(SystemLibConfig{
-      .cpp_flags = cflags,
-      .ld_libs = libs,
-    });
-
-    auto output_path = system_lib_config.to_filesystem(root_build_dir);
+    auto output_path =
+      _args.system_lib_config.to_filesystem(_args.root_build_dir);
 
     bail_unit(FileSystem::mkdirs(output_path.parent()));
-    bail_unit(FileWriter::save_file(output_path, content));
 
-    return bee::ok();
+    auto content = SystemLibConfig{
+      .cpp_flags = cflags,
+      .ld_libs = libs,
+    };
+    return yasf::Cof::serialize_file(output_path, content);
   }
+
+ private:
+  const Args _args;
 };
 
-struct RunCppRule {
-  using ptr = shared_ptr<RunCppRule>;
+struct RunCppRule final : public RunableRule {
+  using ptr = std::shared_ptr<RunCppRule>;
 
   struct Args {
     const FilePath root_build_dir;
-    const gmp::Profile profile;
+    const types::Profile profile;
     const bool is_library = false;
     const NormalizedRule::ptr nrule;
-    const bc::Cpp build_config;
+    const generated::Cpp build_config;
     const bool verbose;
   };
 
-  bee::OrError<> operator()() const
+  virtual bee::OrError<> run() const override
   {
-    set<FilePath> lib_dep_objects;
-
     if (!_main_output.has_value()) { return bee::ok(); }
     auto& main_output = *_main_output;
 
     bail_unit(FileSystem::mkdirs(main_output.parent()));
 
-    auto fp_set_to_string_vec = [](const std::set<FilePath>& s) {
-      return bee::map_vector(
-        bee::to_vector(s), [](const auto& p) { return p.to_string(); });
+    auto fp_set_to_string_set = [](const std::set<FilePath>& s) {
+      return bee::map_set(s, [](auto&& p) { return p.to_string(); });
     };
 
     vector<string> cmd_args = compose_vector(
       _cpp_flags,
-      fp_set_to_string_vec(_input_sources),
-      fp_set_to_string_vec(_input_objects),
+      fp_set_to_string_set(_input_sources),
+      fp_set_to_string_set(_input_objects),
       "-o",
       main_output.to_string());
 
@@ -403,7 +426,7 @@ struct RunCppRule {
 
     auto r = CommandRunner({
       .output_prefix = main_output,
-      .cmd = FilePath::of_string(_compiler),
+      .cmd = FilePath(_compiler),
       .args = cmd_args,
       .timeout = Span::of_minutes(5),
       .verbose = _verbose,
@@ -420,7 +443,8 @@ struct RunCppRule {
     set<FilePath> system_lib_configs;
     for (const auto& lib : nrule.transitive_libs) {
       if (auto cfg = lib->system_lib_config()) {
-        insert(system_lib_configs, cfg->to_filesystem(args.root_build_dir));
+        bee::insert(
+          system_lib_configs, cfg->to_filesystem(args.root_build_dir));
       }
     }
 
@@ -444,9 +468,9 @@ struct RunCppRule {
 
     set<FilePath> include_dirs;
     for (const auto& lib : nrule.transitive_libs) {
-      include_dirs.insert(lib->root_source_dir);
+      include_dirs.insert(lib->root_package_dir);
     }
-    include_dirs.insert(nrule.root_source_dir);
+    include_dirs.insert(nrule.root_package_dir);
 
     optional<FilePath> main_output;
     {
@@ -455,7 +479,7 @@ struct RunCppRule {
         if (!input_sources.empty()) {
           pmain_output = nrule.output_cpp_object();
         } else {
-          pmain_output = nullopt;
+          pmain_output = std::nullopt;
         }
       } else {
         pmain_output = nrule.name;
@@ -465,7 +489,7 @@ struct RunCppRule {
       }
     }
 
-    vector<string> cpp_flags = compose_vector(
+    auto cpp_flags = compose_vector<string>(
       args.profile.cpp_flags, nrule.cpp_flags(), args.build_config.cpp_flags);
     for (const auto& dir : include_dirs) {
       concat_many(cpp_flags, "-iquote", dir.to_string());
@@ -483,7 +507,7 @@ struct RunCppRule {
         nrule.ld_flags());
     }
 
-    set<FilePath> inputs = compose_set(
+    auto inputs = bee::compose_set<FilePath>(
       input_sources, input_headers, input_objects, system_lib_configs);
 
     set<FilePath> outputs;
@@ -514,14 +538,14 @@ struct RunCppRule {
 
   string non_file_inputs_key() const
   {
-    vector<string> parts = compose_vector(_cpp_flags, _compiler);
+    vector<string> parts = compose_vector(_cpp_flags, _compiler.to_string());
     return bee::join(parts, "##");
   }
 
   RunCppRule(
     const PackagePath& name,
     optional<FilePath>&& main_output,
-    string&& compiler,
+    FilePath&& compiler,
     vector<string>&& cpp_flags,
     bool is_library,
     set<FilePath>&& input_objects,
@@ -530,7 +554,8 @@ struct RunCppRule {
     set<FilePath>&& inputs,
     set<FilePath>&& outputs,
     const bool verbose)
-      : _name(name),
+      : RunableRule(false),
+        _name(name),
         _main_output(std::move(main_output)),
         _compiler(std::move(compiler)),
         _cpp_flags(std::move(cpp_flags)),
@@ -546,7 +571,7 @@ struct RunCppRule {
  private:
   const PackagePath _name;
   const optional<FilePath> _main_output;
-  const string _compiler;
+  const FilePath _compiler;
   const vector<string> _cpp_flags;
   const bool _is_library;
 
@@ -561,7 +586,7 @@ struct RunCppRule {
 
 struct Builder {
   bee::OrError<RunCppRule::ptr> handle_cpp_rule(
-    const NormalizedRule::ptr& nrule, bool is_library = false)
+    const NormalizedRule::ptr& nrule, bool is_library)
   {
     auto runner = RunCppRule::create({
       .root_build_dir = _root_build_dir,
@@ -572,12 +597,10 @@ struct Builder {
       .verbose = _verbose,
     });
 
-    auto wrapper = [runner]() { return (*runner)(); };
-
     _manager->create_task({
       .key = nrule->name.append_no_sep(".compile"),
       .root_build_dir = _root_build_dir,
-      .run = wrapper,
+      .run = runner,
       .inputs = runner->inputs(),
       .outputs = runner->outputs(),
       .non_file_inputs_key = runner->non_file_inputs_key(),
@@ -586,60 +609,55 @@ struct Builder {
     return runner;
   }
 
-  bee::OrError<> handle_rule(const gmp::Profile&, const NormalizedRule::ptr&)
+  bee::OrError<> handle_rule(const types::Profile&, const NormalizedRule::ptr&)
   {
     return bee::ok();
   }
 
   bee::OrError<> handle_rule(
-    const gmp::ExternalPackage&, const NormalizedRule::ptr&)
+    const types::ExternalPackage&, const NormalizedRule::ptr&)
   {
     return bee::ok();
   }
 
   bee::OrError<> handle_rule(
-    const gmp::CppBinary&, const NormalizedRule::ptr& nrule)
+    const types::CppBinary&, const NormalizedRule::ptr& nrule)
   {
-    bail(cpp_rule, handle_cpp_rule(nrule));
-    auto ret = _binaries.emplace(cpp_rule->name(), cpp_rule);
-    if (!ret.second) {
-      return bee::Error::fmt("Binary $ declared twice", cpp_rule->name());
-    }
+    bail(rule, handle_cpp_rule(nrule, false));
+    _runable_rules.emplace(rule->name(), rule);
     return bee::ok();
   }
 
   bee::OrError<> handle_rule(
-    const gmp::CppLibrary&, const NormalizedRule::ptr& nrule)
+    const types::CppLibrary&, const NormalizedRule::ptr& nrule)
   {
-    bail(cpp_rule, handle_cpp_rule(nrule, true));
-    auto ret = _library_rules.emplace(cpp_rule->name(), cpp_rule);
-    if (!ret.second) {
-      return bee::Error::fmt("Library $ declared twice", cpp_rule->name());
-    }
+    bail(rule, handle_cpp_rule(nrule, true));
+    _runable_rules.emplace(rule->name(), rule);
     return bee::ok();
   }
 
   bee::OrError<> handle_rule(
-    const gmp::CppTest& rrule, const NormalizedRule::ptr& nrule)
+    const types::CppTest& rrule, const NormalizedRule::ptr& nrule)
   {
     bool should_run = true;
     auto os_filter = nrule->os_filter();
     if (!os_filter.empty()) {
       should_run = false;
       for (const auto& os : os_filter) {
-        if (os == "linux") {
+        switch (os) {
+        case types::OS::linux:
           if (bee::RunningOS == bee::OS::Linux) { should_run = true; }
-        } else if (os == "macos") {
+          break;
+        case types::OS::macos:
           if (bee::RunningOS == bee::OS::Macos) { should_run = true; }
-        } else {
-          return bee::Error::fmt("Invalid os name in os_filter: $", os);
+          break;
         }
       }
     }
 
     if (!should_run) { return bee::ok(); }
 
-    bail(binary_rule, handle_cpp_rule(nrule));
+    bail(binary_rule, handle_cpp_rule(nrule, false));
 
     auto rule_name = nrule->name;
     auto test_output = nrule->package_dir / rrule.output;
@@ -648,7 +666,7 @@ struct Builder {
       binary_rule->main_output().has_value() && "A binary must have an output");
     auto binary_file = *binary_rule->main_output();
 
-    auto runner = RunTest({
+    auto runner = std::make_shared<RunTest>(RunTest::Args{
       .rule_name = rule_name,
       .root_build_dir = _root_build_dir,
       .test_binary = binary_file,
@@ -659,54 +677,65 @@ struct Builder {
     _manager->create_task({
       .key = rule_name.append_no_sep(".run"),
       .root_build_dir = _root_build_dir,
-      .run = std::move(runner),
+      .run = runner,
       .inputs = {binary_file, test_output},
-      .outputs = {runner.ok_path},
+      .outputs = {},
     });
 
     return bee::ok();
   }
 
+  bee::OrError<bee::FilePath> find_binary_by_rule(const PackagePath& path)
+  {
+    auto it = _runable_rules.find(path);
+    if (it == _runable_rules.end()) { return EF("Rule not found: $", path); }
+    auto ptr = std::dynamic_pointer_cast<RunCppRule>(it->second);
+    if (ptr == nullptr) {
+      return EF("Rule $ found, but is not a cpp rule", path);
+    }
+    auto output = ptr->main_output();
+    if (!output.has_value()) {
+      return EF("Rule $ found, but has no output", path);
+    }
+    return std::move(*output);
+  }
+
   bee::OrError<> handle_rule(
-    const gmp::GenRule& rrule, const NormalizedRule::ptr& nrule)
+    const types::GenRule& rrule, const NormalizedRule::ptr& nrule)
   {
     auto name = nrule->name;
     const auto& pkg = nrule->package_name;
 
     PackagePath binary_rule_name = pkg / rrule.binary;
-
-    auto it = _binaries.find(binary_rule_name);
-    if (it == _binaries.end()) {
-      return bee::Error::fmt(
-        "Gen rule $ depends on unknown binary $", name, binary_rule_name);
-    }
-
-    auto binary_rule = it->second;
+    bail(
+      binary_path,
+      find_binary_by_rule(binary_rule_name),
+      "Failed to find binary for genrule '$'",
+      name);
 
     set<FilePath> outputs;
     for (const auto& output : rrule.outputs) {
       outputs.insert(nrule->package_dir / output);
     }
 
-    auto binary_path = binary_rule->main_output();
-    if (!binary_path.has_value()) {
-      return bee::Error::fmt(
-        "Gen rul $ depends on binary $, but rule does not produce a binary",
-        name,
-        binary_rule_name);
-    }
+    auto rule = std::make_shared<RunGenRule>(RunGenRule::Args{
+      .binary = binary_path,
+      .flags = rrule.flags,
+      .root_build_dir = _root_build_dir,
+      .repo_root_dir = _repo_root_dir,
+      .nrule = nrule,
+      .outputs = rrule.outputs,
+    });
+    _runable_rules.emplace(name, rule);
 
+    set<FilePath> inputs;
+    inputs.insert(binary_path);
+    bee::insert(inputs, nrule->data());
     _manager->create_task({
       .key = name.append_no_sep(".run"),
       .root_build_dir = _root_build_dir,
-      .run = RunGenRule({
-        .binary = *binary_path,
-        .flags = rrule.flags,
-        .root_build_dir = _root_build_dir,
-        .nrule = nrule,
-        .outputs = rrule.outputs,
-      }),
-      .inputs = {*binary_path},
+      .run = rule,
+      .inputs = inputs,
       .outputs = outputs,
     });
 
@@ -714,7 +743,7 @@ struct Builder {
   }
 
   bee::OrError<> handle_rule(
-    const gmp::SystemLib& rrule, const NormalizedRule::ptr& nrule)
+    const types::SystemLib& rrule, const NormalizedRule::ptr& nrule)
   {
     auto system_lib_config_opt = nrule->system_lib_config();
     assert(
@@ -725,14 +754,17 @@ struct Builder {
     set<FilePath> outputs;
     outputs.insert(system_lib_config.to_filesystem(_root_build_dir));
 
+    auto rule = std::make_shared<RunSystemLib>(RunSystemLib::Args{
+      .root_build_dir = _root_build_dir,
+      .rrule = rrule,
+      .system_lib_config = system_lib_config,
+    });
+    _runable_rules.emplace(nrule->name, rule);
+
     _manager->create_task({
       .key = nrule->name.append_no_sep(".run"),
       .root_build_dir = _root_build_dir,
-      .run = RunSystemLib({
-        .root_build_dir = _root_build_dir,
-        .rrule = rrule,
-        .system_lib_config = system_lib_config,
-      }),
+      .run = rule,
       .inputs = {},
       .outputs = outputs,
     });
@@ -752,7 +784,7 @@ struct Builder {
     return bee::ok();
   }
 
-  bee::OrError<> select_profile(const vector<gmp::Profile>& profiles)
+  bee::OrError<> select_profile(const vector<types::Profile>& profiles)
   {
     string profile_name = "default";
     vector<string> profile_flags;
@@ -783,11 +815,11 @@ struct Builder {
     return bee::ok();
   }
 
-  bee::OrError<> run() { return _manager->run(_force_build); }
+  bee::OrError<> run() { return _manager->run(); }
 
   static bee::OrError<Builder> create(const BuildEngine::Args& args)
   {
-    if (!fs::exists(args.build_config)) {
+    if (!FileSystem::exists(args.build_config)) {
       PE(
         "Build config file '$' not found, creating one with default settings",
         args.build_config);
@@ -802,26 +834,25 @@ struct Builder {
   Builder(const BuildEngine::Args& args, const BuildConfig& build_config)
       : _build_config(build_config),
         _output_dir_base(args.output_dir_base),
+        _repo_root_dir(args.repo_root_dir),
         _profile_name(args.profile_name),
         _update_test_output(args.update_test_output),
         _verbose(args.verbose),
-        _force_build(args.force_build),
-        _manager(TaskManager::create())
+        _manager(TaskManager::create(
+          {.force_build = args.force_build, .force_test = args.force_test}))
   {}
 
   const BuildConfig _build_config;
   const FilePath _output_dir_base;
+  const FilePath _repo_root_dir;
   const optional<string> _profile_name;
-  const FilePath _root_source_dir;
   const bool _update_test_output;
   const bool _verbose;
-  const bool _force_build;
 
   TaskManager::ptr _manager;
-  map<PackagePath, RunCppRule::ptr> _library_rules;
-  map<PackagePath, RunCppRule::ptr> _binaries;
+  std::map<PackagePath, RunableRule::ptr> _runable_rules;
 
-  optional<gmp::Profile> _profile;
+  optional<types::Profile> _profile;
   FilePath _root_build_dir;
 };
 
@@ -830,7 +861,7 @@ struct Builder {
 bee::OrError<> BuildEngine::build(const Args& args)
 {
   BuildNormalizer norm(args.mbuild_name, args.external_packages_dir);
-  bail(build, norm.normalize_build(args.root_source_dir));
+  bail(build, norm.normalize_build(args.repo_root_dir));
 
   bail(builder, Builder::create(args));
   bail_unit(builder.select_profile(build.profiles));
@@ -839,7 +870,7 @@ bee::OrError<> BuildEngine::build(const Args& args)
 
   bail_unit(builder.run());
 
-  return {};
+  return bee::ok();
 }
 
 } // namespace mellow

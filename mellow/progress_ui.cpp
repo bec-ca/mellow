@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "bee/fd.hpp"
+#include "bee/print.hpp"
 
 using bee::Time;
 using std::lock_guard;
@@ -75,6 +76,7 @@ void ProgressUI::task_done(const TaskProgress::ptr& task, bool cached)
   _running_tasks--;
   if (!_is_tty && !cached) {
     P("$ {.2} ($/$)", task->name(), took, _finished_tasks, _all_tasks.size());
+    bee::flush_stdout();
   }
   task->set_done();
   _remove_running_task(task);
@@ -144,7 +146,7 @@ void ProgressUI::_show_running_tasks()
   // leave an empty line at the beginning
   buffer += "\x1b[?25h"; // show cursor again
 
-  bee::FD::stdout_filedesc()->write(buffer);
+  must_unit(bee::FD::stdout_filedesc()->write(buffer));
   _shown_lines = will_show;
 }
 

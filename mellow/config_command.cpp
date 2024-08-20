@@ -1,20 +1,19 @@
 #include "config_command.hpp"
 
-#include "build_config.hpp"
 #include "generate_build_config.hpp"
 
 #include "command/command_builder.hpp"
+#include "command/file_path.hpp"
 
 namespace mellow {
 
 command::Cmd ConfigCommand::command()
 {
-  using namespace command;
-  using namespace command::flags;
-  auto builder = CommandBuilder("Generate a build config");
-  auto default_cpp_compiler = builder.optional("--cpp-compiler", string_flag);
-  auto output =
-    builder.optional_with_default("--output", string_flag, ".build-config");
+  namespace f = command::flags;
+  auto builder = command::CommandBuilder("Generate a build config");
+  auto default_cpp_compiler = builder.optional("--cpp-compiler", f::FilePath);
+  auto output = builder.optional_with_default(
+    "--output", f::FilePath, bee::FilePath("build/.build-config"));
   return builder.run([=]() {
     return GenerateBuildConfig::generate(
       *output,

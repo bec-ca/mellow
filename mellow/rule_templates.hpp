@@ -45,6 +45,9 @@ concept HasSystemLibConfig = requires(T t) { t.system_lib_config(); };
 template <class T>
 concept HasLocation = requires(T t) { t.location; };
 
+template <class T>
+concept HasData = requires(T t) { t.data; };
+
 ////////////////////////////////////////////////////////////////////////////////
 // ProvideLibs
 //
@@ -210,6 +213,27 @@ template <HasBinary T, class P> struct ProvideBinary<T, P> {
 template <class T, class P> struct ProvideBinary {};
 
 ////////////////////////////////////////////////////////////////////////////////
+// ProvideData
+//
+
+template <class T, class P> struct ProvideData;
+
+template <HasData T, class P> struct ProvideData<T, P> {
+ public:
+  std::set<std::string> data() const
+  {
+    const auto& p = _p();
+    return bee::to_set(p.raw().data);
+  }
+
+ private:
+  const P& _p() const { return static_cast<const P&>(*this); }
+  P& _p() { return static_cast<P&>(*this); }
+};
+
+template <class T, class P> struct ProvideData {};
+
+////////////////////////////////////////////////////////////////////////////////
 // ProvideSystemLibConfig
 //
 
@@ -263,7 +287,8 @@ struct BaseRule : public details::ProvideLibs<T, BaseRule<T>>,
                   public details::ProvideOutput<T, BaseRule<T>>,
                   public details::ProvideBinary<T, BaseRule<T>>,
                   public details::ProvideSystemLibConfig<T, BaseRule<T>>,
-                  public details::ProvideLocation<T, BaseRule<T>> {
+                  public details::ProvideLocation<T, BaseRule<T>>,
+                  public details::ProvideData<T, BaseRule<T>> {
  public:
   using format_type = T;
 

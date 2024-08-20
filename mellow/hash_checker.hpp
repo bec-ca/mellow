@@ -1,11 +1,8 @@
 #pragma once
 
-#include <filesystem>
 #include <set>
-#include <vector>
 
-#include "generated_build_hash.hpp"
-#include "package_path.hpp"
+#include "build_hash.generated.hpp"
 
 #include "bee/file_path.hpp"
 
@@ -34,7 +31,7 @@ struct HashChecker {
   std::set<bee::FilePath> _outputs;
   std::string _non_file_inputs_key;
 
-  std::optional<generated_build_hash::TaskHash> _current_hashes_if_up_to_date;
+  std::optional<TaskHash> _current_hashes_if_up_to_date;
 };
 
 } // namespace mellow
