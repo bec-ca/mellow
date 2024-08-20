@@ -2,7 +2,7 @@
 
 export CXX=clang-18
 export CLANG_FORMAT=clang-format-18
-export CXXFLAGS="-lstdc++ -lm"
+export LDLAGS="-lstdc++ -lm"
 
 export MELLOW=build/mellow.bootstrap
 
