@@ -3,6 +3,7 @@
 #include "genbuild.hpp"
 
 #include "command/command_builder.hpp"
+#include "command/file_path.hpp"
 
 using command::Cmd;
 using command::CommandBuilder;
@@ -11,10 +12,10 @@ namespace mellow {
 
 Cmd GenbuildCommand::command()
 {
-  using namespace command::flags;
+  namespace f = command::flags;
   auto builder = CommandBuilder("Generate an mbuild file");
-  auto directory = builder.anon(string_flag, "dir");
-  auto output = builder.optional("--output-mbuild", string_flag);
+  auto directory = builder.anon(f::FilePath, "dir");
+  auto output = builder.optional("--output-mbuild", f::FilePath);
   return builder.run([=]() { return GenBuild::run(*directory, *output); });
 }
 

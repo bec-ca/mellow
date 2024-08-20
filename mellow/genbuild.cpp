@@ -1,30 +1,24 @@
 #include "genbuild.hpp"
 
-#include <filesystem>
 #include <map>
 #include <optional>
-#include <stdexcept>
 #include <string>
 
-#include "generated_mbuild_parser.hpp"
 #include "mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
 #include "package_path.hpp"
 
-#include "bee/error.hpp"
 #include "bee/file_reader.hpp"
 #include "bee/filesystem.hpp"
-#include "bee/format_filesystem.hpp"
-#include "bee/format_set.hpp"
-#include "bee/format_vector.hpp"
+#include "bee/or_error.hpp"
+#include "bee/print.hpp"
+#include "bee/ref.hpp"
 #include "bee/sort.hpp"
 #include "bee/string_util.hpp"
 #include "bee/util.hpp"
 
-namespace fs = std::filesystem;
-
-using bee::always_false_v;
 using bee::FilePath;
-using bee::is_one_of_v;
+using bee::is_one_of;
 using bee::OrError;
 
 using bee::to_vector;
@@ -48,23 +42,40 @@ bool is_cpp_source_extension(const string& ext)
   return ext == ".cpp" || ext == ".cc" || ext == ".c";
 }
 
+bool is_yasf_file_extension(const string& ext) { return ext == ".yasf"; }
+bool is_exc_file_extension(const string& ext) { return ext == ".exc"; }
+
+bool is_interesting_extension(const std::string& ext)
+{
+  return is_cpp_header_extension(ext) || is_cpp_source_extension(ext) ||
+         is_yasf_file_extension(ext) || is_exc_file_extension(ext);
+}
+
 OrError<vector<FilePath>> list_files(const FilePath& dir)
 {
-  bail(files, bee::FileSystem::list_regular_files(dir));
+  bail(
+    files, bee::FileSystem::list_regular_files(dir, {.relative_path = true}));
   vector<FilePath> output;
-  for (const auto& p : files) {
-    auto extension = p.extension();
-    if (
-      is_cpp_header_extension(extension) ||
-      is_cpp_source_extension(extension)) {
-      output.push_back(p);
+  for (auto& p : files) {
+    if (is_interesting_extension(p.extension())) {
+      output.push_back(std::move(p));
     }
   }
   return output;
 }
 
-struct Library {
-  Library(const PackagePath& name) : name(name) {}
+struct Target {
+ public:
+  Target(const PackagePath& name) : _name(name) {}
+
+  const PackagePath& name() const { return _name; }
+
+ private:
+  PackagePath _name;
+};
+
+struct Library : Target {
+  Library(const PackagePath& name) : Target(name) {}
 
   void add_source(const string& source) { sources.insert(source); }
 
@@ -74,10 +85,42 @@ struct Library {
 
   bool is_good() const { return !sources.empty() || !headers.empty(); }
 
-  PackagePath name;
   set<string> sources;
   set<string> headers;
   set<PackagePath> libs;
+};
+
+struct BasicGenRule : Target {
+ public:
+  BasicGenRule(const PackagePath& name, const bee::FilePath& source)
+      : Target(name), _source(source)
+  {}
+
+  const bee::FilePath& source() const { return _source; }
+
+  const std::vector<std::string> outputs() const
+  {
+    const auto stem = _source.stem();
+    return {
+      stem + ".generated.cpp",
+      stem + ".generated.hpp",
+    };
+  }
+
+ private:
+  bee::FilePath _source;
+  bee::FilePath _cpp_source;
+  bee::FilePath _cpp_header;
+};
+
+struct YasfRule : BasicGenRule {
+ public:
+  using BasicGenRule::BasicGenRule;
+};
+
+struct ExcRule : BasicGenRule {
+ public:
+  using BasicGenRule::BasicGenRule;
 };
 
 struct Includes {
@@ -126,15 +169,12 @@ FilePath get_repo_root_dir(FilePath dir)
 }
 
 OrError<> GenBuild::run(
-  const optional<string>& directory_opt,
-  const optional<string>& mbuild_path_opt)
+  const optional<FilePath>& directory_opt,
+  const optional<FilePath>& mbuild_path_opt)
 {
-  auto dir = FilePath::of_string(fs::canonical(directory_opt.value_or(".")));
-  auto mbuild_path =
-    FilePath::of_string(mbuild_path_opt.value_or(dir.to_std_path() / "mbuild"));
+  bail(dir, bee::FileSystem::canonical(directory_opt.value_or(FilePath("."))));
+  auto mbuild_path = mbuild_path_opt.value_or(dir / "mbuild");
   auto repo_root_dir = get_repo_root_dir(dir);
-
-  bail(files, list_files(dir));
 
   // TODO: put the actual package path
   bail(package_path, PackagePath::of_filesystem(repo_root_dir, dir));
@@ -151,11 +191,13 @@ OrError<> GenBuild::run(
   };
 
   map<PackagePath, Library> libraries;
+  vector<YasfRule> yasf_rules;
+  vector<ExcRule> exc_rules;
   vector<string> binaries;
 
-  map<PackagePath, gmp::Rule> output_rules_map;
+  map<PackagePath, types::Rule> output_rules_map;
 
-  map<PackagePath, gmp::Rule> pre_existing_rules;
+  map<PackagePath, types::Rule> pre_existing_rules;
 
   // read existing mbuild file
 
@@ -163,7 +205,7 @@ OrError<> GenBuild::run(
     return std::visit([](const auto& rule) { return rule.name; }, rule.value);
   };
 
-  map<PackagePath, gmp::SystemLib> system_libs;
+  map<PackagePath, types::SystemLib> system_libs;
 
   if (!bee::FileSystem::exists(mbuild_path)) {
     P("No build rules found, a new one will be created from scratch");
@@ -172,161 +214,162 @@ OrError<> GenBuild::run(
     for (const auto& rule : existing_rules) {
       pre_existing_rules.emplace(package_path / rule_name(rule), rule);
     }
-    for (auto& rule : existing_rules) {
-      bool should_keep = std::visit(
+    for (const auto& rule : existing_rules) {
+      const bool should_keep = rule.visit(
         [&system_libs, &package_path]<class T>(const T& rule) -> bool {
-          if constexpr (is_same_v<T, gmp::SystemLib>) {
+          if constexpr (is_same_v<T, types::SystemLib>) {
             system_libs.emplace(package_path / rule.name, rule);
             return true;
-          } else if constexpr (is_one_of_v<
-                                 T,
-                                 gmp::CppBinary,
-                                 gmp::CppLibrary>) {
+          } else if constexpr (
+            is_one_of<T, types::CppBinary, types::CppLibrary, types::CppTest>) {
             return false;
-          } else if constexpr (is_one_of_v<
+          } else if constexpr (is_one_of<
                                  T,
-                                 gmp::GenRule,
-                                 gmp::Profile,
-                                 gmp::CppTest,
-                                 gmp::ExternalPackage>) {
+                                 types::Profile,
+                                 types::ExternalPackage>) {
             return true;
+          } else if constexpr (is_one_of<T, types::GenRule>) {
+            bool has_yasf_data =
+              rule.data.size() == 1 && rule.data.at(0).ends_with(".yasf");
+            bool has_exc_data =
+              rule.data.size() == 1 && rule.data.at(0).ends_with(".exc");
+            return !has_yasf_data && !has_exc_data;
           } else {
-            static_assert(always_false_v<T> && "non exaustive visit");
+            static_assert(bee::always_false<T> && "non exhaustive visit");
           }
-        },
-        rule.value);
+        });
       if (should_keep) {
         output_rules_map.emplace(package_path / rule_name(rule), rule);
       }
     }
   }
 
-  auto get_or_create_library = [&](const PackagePath& name) -> Library& {
+  auto get_or_create_library = [&](const PackagePath& name) {
     auto it = libraries.find(name);
-    if (it == libraries.end()) {
-      auto ret = libraries.emplace(name, Library(name));
-      return ret.first->second;
-    } else {
-      return it->second;
-    }
+    if (it == libraries.end()) { it = libraries.emplace(name, name).first; }
+    return bee::ref(it->second);
   };
 
   auto find_system_lib_by_header =
-    [&](const string& header) -> const gmp::SystemLib* {
+    [&](const string& header) -> bee::nref<const types::SystemLib> {
     for (const auto& [_, lib] : system_libs) {
       for (const auto& h : lib.provide_headers) {
-        if (h == header) { return &lib; }
+        if (h == header) { return lib; }
       }
     }
     return nullptr;
   };
 
   auto find_system_lib_by_name =
-    [&](const PackagePath& name) -> const gmp::SystemLib* {
+    [&](const PackagePath& name) -> bee::nref<const types::SystemLib> {
     auto it = system_libs.find(name);
     if (it == system_libs.end()) { return nullptr; }
-    return &it->second;
+    return it->second;
   };
 
+  bail(files, list_files(dir));
   for (const auto& file : files) {
-    string extension = file.extension();
-    auto lib_name = package_path / file.stem();
+    const string extension = file.extension();
+    if (is_yasf_file_extension(extension)) {
+      auto name = package_path / file.stem() + "_yasf_codegen";
+      yasf_rules.emplace_back(name, file);
+    } else if (is_exc_file_extension(extension)) {
+      auto name = package_path / file.stem() + "_exc_codegen";
+      exc_rules.emplace_back(name, file);
+    } else {
+      const auto lib_name = package_path / file.stem();
 
-    auto& lib = get_or_create_library(lib_name);
-    if (is_cpp_source_extension(extension)) {
-      lib.add_source(file.filename());
-    } else if (is_cpp_header_extension(extension)) {
-      lib.add_header(file.filename());
-    }
-
-    bail(includes, scan_includes(file));
-    for (const auto& header : includes.quote_includes) {
-      // Guess the library deps based in include headers. If the header path
-      // has at least on '/' then it is considered an absolute import
-      // TODO: check whether the file actually exist
-      auto p = fs::path(header);
-      p.replace_extension("");
-      PackagePath root =
-        p.has_parent_path() ? PackagePath::root() : package_path;
-      PackagePath path = root / p;
-      // Source files include the header counterpart, but that is not a library
-      // dep
-      if (path != lib.name) { lib.add_lib(path); }
-    }
-
-    for (const auto& header : includes.angle_includes) {
-      if (auto system_lib = find_system_lib_by_header(header)) {
-        lib.add_lib(package_path / system_lib->name);
+      auto lib = get_or_create_library(lib_name);
+      if (is_cpp_source_extension(extension)) {
+        lib->add_source(file.to_string());
+      } else if (is_cpp_header_extension(extension)) {
+        lib->add_header(file.to_string());
+      } else {
+        raise_error("Unexpected file seen: $", file);
       }
-    }
 
-    if (bee::ends_with(lib_name.last(), "_main")) {
-      binaries.push_back(lib_name.last().substr(0, lib_name.last().size() - 5));
+      bail(includes, scan_includes(dir / file));
+      for (const auto& header : includes.quote_includes) {
+        // Guess the library deps based on include headers. If the header path
+        // has at least on '/' then it is considered an absolute import
+        // TODO: check whether the file actually exist
+        FilePath p(header);
+        p = p.remove_extension();
+        PackagePath root = p.has_parent() ? PackagePath::root() : package_path;
+        auto path = root / p.to_string();
+        // Source files include the header counterpart, but
+        // that is not a library dep
+        if (path != lib->name()) { lib->add_lib(path); }
+      }
+
+      for (const auto& header : includes.angle_includes) {
+        if (auto system_lib = find_system_lib_by_header(header)) {
+          lib->add_lib(package_path / system_lib->name);
+        }
+      }
+
+      if (auto n = bee::remove_suffix(lib_name.last(), "_main")) {
+        binaries.push_back(std::move(*n));
+      }
     }
   }
 
   auto filter_libs = [&](const set<PackagePath>& libs) {
     set<PackagePath> output;
     for (const auto& lib : libs) {
-      if (!lib.is_child_of(package_path)) {
-        output.insert(lib);
-      } else {
-        auto it = libraries.find(lib);
-        if (
-          (it == libraries.end() || !it->second.is_good()) &&
-          find_system_lib_by_name(lib) == nullptr)
-          continue;
+      bool is_system_lib = find_system_lib_by_name(lib) != nullptr;
+      bool different_package = lib.parent() != package_path;
+      auto it = libraries.find(lib);
+      bool is_lib_good = it != libraries.end() && it->second.is_good();
+      if (is_system_lib || different_package || is_lib_good) {
         output.insert(lib);
       }
     }
     return output;
   };
 
-  auto find_rule = [](
-                     const PackagePath& name,
-                     map<PackagePath, gmp::Rule>& rules) -> gmp::Rule* {
+  auto find_rule =
+    [](
+      const PackagePath& name,
+      map<PackagePath, types::Rule>& rules) -> bee::nref<types::Rule> {
     auto it = rules.find(name);
     if (it == rules.end()) { return nullptr; }
-    return &it->second;
+    return it->second;
   };
 
   auto find_from_pre_existing = [&](const PackagePath& name) {
     return find_rule(name, pre_existing_rules);
   };
 
-  auto find_from_rules = [&](const PackagePath& name) -> gmp::Rule* {
+  auto find_from_rules = [&](const PackagePath& name) {
     return find_rule(name, output_rules_map);
   };
 
-  auto merge_rules = [&](const gmp::Rule& new_rule, const gmp::Rule& orig) {
+  auto merge_rules = [&](const types::Rule& new_rule, const types::Rule& orig) {
     auto output = new_rule;
-    std::visit(
-      [&]<class T>(T& rule) {
-        std::visit(
-          [&]<class U>(const U& orig) {
-            if constexpr (!is_same_v<T, U>) {
-              throw std::runtime_error("Unexpected mismatch rule type");
-            } else if constexpr (is_same_v<T, gmp::Profile>) {
-            } else if constexpr (is_same_v<T, gmp::CppBinary>) {
-              rule.ld_flags = orig.ld_flags;
-            } else if constexpr (is_same_v<T, gmp::CppLibrary>) {
-              rule.ld_flags = orig.ld_flags;
-            } else if constexpr (is_same_v<T, gmp::CppTest>) {
-              rule.os_filter = orig.os_filter;
-            } else if constexpr (is_same_v<T, gmp::GenRule>) {
-            } else if constexpr (is_same_v<T, gmp::SystemLib>) {
-            } else if constexpr (is_same_v<T, gmp::ExternalPackage>) {
-            } else {
-              static_assert(always_false_v<T> && "non exaustive visit");
-            }
-          },
-          orig.value);
-      },
-      output.value);
+    output.visit([&]<class T>(T& rule) {
+      orig.visit([&]<class U>(const U& orig) {
+        if constexpr (!is_same_v<T, U>) {
+          raise_error("Unexpected mismatch rule type");
+        } else if constexpr (is_same_v<T, types::Profile>) {
+        } else if constexpr (is_same_v<T, types::CppBinary>) {
+          rule.ld_flags = orig.ld_flags;
+        } else if constexpr (is_same_v<T, types::CppLibrary>) {
+          rule.ld_flags = orig.ld_flags;
+        } else if constexpr (is_same_v<T, types::CppTest>) {
+          rule.os_filter = orig.os_filter;
+        } else if constexpr (is_same_v<T, types::GenRule>) {
+        } else if constexpr (is_same_v<T, types::SystemLib>) {
+        } else if constexpr (is_same_v<T, types::ExternalPackage>) {
+        } else {
+          static_assert(bee::always_false<T> && "non exhaustive visit");
+        }
+      });
+    });
     return output;
   };
 
-  auto replace_rule = [&](const PackagePath& name, gmp::Rule&& new_rule) {
+  auto replace_rule = [&](const PackagePath& name, types::Rule&& new_rule) {
     if (auto to_replace = find_from_rules(name)) {
       *to_replace = merge_rules(new_rule, *to_replace);
     } else if (auto to_replace = find_from_pre_existing(name)) {
@@ -336,40 +379,61 @@ OrError<> GenBuild::run(
     }
   };
 
-  for (const auto& kv : libraries) {
-    const auto& lib = kv.second;
-    if (bee::ends_with(lib.name.last(), "_test")) {
-      auto cpp_test = gmp::CppTest{
-        .name = lib.name.last(),
+  for (const auto& [_, lib] : libraries) {
+    if (lib.name().last().ends_with("_test")) {
+      auto cpp_test = types::CppTest{
+        .name = lib.name().last(),
         .sources = to_vector(lib.sources),
         .libs = vec_to_relative(to_vector(filter_libs(lib.libs))),
-        .output = lib.name.last() + ".out",
+        .output = lib.name().last() + ".out",
       };
-      replace_rule(lib.name, gmp::Rule(std::move(cpp_test)));
+      replace_rule(lib.name(), types::Rule(std::move(cpp_test)));
     } else {
       if (!lib.is_good()) { continue; }
-      auto cpp_library = gmp::CppLibrary{
-        .name = lib.name.last(),
+      auto cpp_library = types::CppLibrary{
+        .name = lib.name().last(),
         .sources = to_vector(lib.sources),
         .headers = to_vector(lib.headers),
         .libs = vec_to_relative(to_vector(filter_libs(lib.libs))),
         .ld_flags = {},
       };
-      replace_rule(lib.name, gmp::Rule(cpp_library));
+      replace_rule(lib.name(), cpp_library);
     }
   }
 
   for (const auto& name : binaries) {
-    auto cpp_binary = gmp::CppBinary{
+    auto cpp_binary = types::CppBinary{
       .name = name,
       .sources = {},
       .libs = {F("$_main", name)},
       .ld_flags = {},
     };
-    replace_rule(package_path / name, gmp::Rule(cpp_binary));
+    replace_rule(package_path / name, cpp_binary);
   }
 
-  vector<gmp::Rule> rules;
+  for (const auto& rule : yasf_rules) {
+    auto genrule = types::GenRule{
+      .name = rule.name().last(),
+      .binary = "/yasf/yasf_compiler",
+      .flags = {"compile", rule.source().to_string()},
+      .data = {rule.source().to_string()},
+      .outputs = rule.outputs(),
+    };
+    replace_rule(rule.name(), genrule);
+  }
+
+  for (const auto& rule : exc_rules) {
+    auto genrule = types::GenRule{
+      .name = rule.name().last(),
+      .binary = "/exc/exc",
+      .flags = {"compile", rule.source().to_string()},
+      .data = {rule.source().to_string()},
+      .outputs = rule.outputs(),
+    };
+    replace_rule(rule.name(), genrule);
+  }
+
+  vector<types::Rule> rules;
   for (auto& [_, rule] : output_rules_map) { rules.push_back(rule); }
   return MbuildParser::to_file(mbuild_path, rules);
 }

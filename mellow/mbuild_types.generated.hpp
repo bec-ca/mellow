@@ -5,19 +5,19 @@
 #include <variant>
 #include <vector>
 
-#include "bee/error.hpp"
-#include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
+#include "yasf/file_path.hpp"
 #include "yasf/serializer.hpp"
 #include "yasf/to_stringable_mixin.hpp"
 
-namespace generated_mbuild_parser {
+namespace mellow::types {
 
 struct Profile : public yasf::ToStringableMixin<Profile> {
   std::string name;
   std::vector<std::string> cpp_flags;
-  std::vector<std::string> ld_flags = {};
-  std::optional<std::string> cpp_compiler = std::nullopt;
-  std::optional<yasf::Location> location;
+  std::vector<std::string> ld_flags{};
+  std::optional<yasf::FilePath> cpp_compiler{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<Profile> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -27,11 +27,11 @@ struct Profile : public yasf::ToStringableMixin<Profile> {
 
 struct CppBinary : public yasf::ToStringableMixin<CppBinary> {
   std::string name;
-  std::vector<std::string> sources = {};
+  std::vector<std::string> sources{};
   std::vector<std::string> libs;
-  std::vector<std::string> ld_flags = {};
-  std::vector<std::string> cpp_flags = {};
-  std::optional<yasf::Location> location;
+  std::vector<std::string> ld_flags{};
+  std::vector<std::string> cpp_flags{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<CppBinary> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -41,12 +41,12 @@ struct CppBinary : public yasf::ToStringableMixin<CppBinary> {
 
 struct CppLibrary : public yasf::ToStringableMixin<CppLibrary> {
   std::string name;
-  std::vector<std::string> sources = {};
-  std::vector<std::string> headers = {};
-  std::vector<std::string> libs = {};
-  std::vector<std::string> ld_flags = {};
-  std::vector<std::string> cpp_flags = {};
-  std::optional<yasf::Location> location;
+  std::vector<std::string> sources{};
+  std::vector<std::string> headers{};
+  std::vector<std::string> libs{};
+  std::vector<std::string> ld_flags{};
+  std::vector<std::string> cpp_flags{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<CppLibrary> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -54,13 +54,30 @@ struct CppLibrary : public yasf::ToStringableMixin<CppLibrary> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
+struct OS {
+  enum Value {
+    linux,
+    macos,
+  };
+  constexpr OS(Value v) : _value(v) {}
+  constexpr operator Value() const { return _value; }
+  explicit operator bool() const = delete;
+  yasf::Value::ptr to_yasf_value() const;
+  static bee::OrError<OS> of_yasf_value(const yasf::Value::ptr& config_value);
+
+  const char* to_string() const;
+
+ private:
+  Value _value;
+};
+
 struct CppTest : public yasf::ToStringableMixin<CppTest> {
   std::string name;
   std::vector<std::string> sources;
-  std::vector<std::string> libs = {};
+  std::vector<std::string> libs{};
   std::string output;
-  std::vector<std::string> os_filter = {};
-  std::optional<yasf::Location> location;
+  std::vector<OS> os_filter{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<CppTest> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -71,9 +88,11 @@ struct CppTest : public yasf::ToStringableMixin<CppTest> {
 struct GenRule : public yasf::ToStringableMixin<GenRule> {
   std::string name;
   std::string binary;
-  std::vector<std::string> flags = {};
+  std::vector<std::string> flags{};
+  std::vector<std::string> data{};
   std::vector<std::string> outputs;
-  std::optional<yasf::Location> location;
+  bool output_to_src{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<GenRule> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -83,10 +102,10 @@ struct GenRule : public yasf::ToStringableMixin<GenRule> {
 
 struct SystemLib : public yasf::ToStringableMixin<SystemLib> {
   std::string name;
-  bee::FilePath command;
-  std::vector<std::string> flags = {};
+  yasf::FilePath command;
+  std::vector<std::string> flags{};
   std::vector<std::string> provide_headers;
-  std::optional<yasf::Location> location;
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<SystemLib> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -96,9 +115,9 @@ struct SystemLib : public yasf::ToStringableMixin<SystemLib> {
 
 struct ExternalPackage : public yasf::ToStringableMixin<ExternalPackage> {
   std::string name;
-  std::optional<std::string> source = std::nullopt;
-  std::optional<std::string> url = std::nullopt;
-  std::optional<yasf::Location> location;
+  std::optional<std::string> source{};
+  std::optional<std::string> url{};
+  std::optional<yasf::Location> location{};
 
   static bee::OrError<ExternalPackage> of_yasf_value(
     const yasf::Value::ptr& config_value);
@@ -139,6 +158,4 @@ struct Rule : public yasf::ToStringableMixin<Rule> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
-} // namespace generated_mbuild_parser
-
-// olint-allow: missing-package-namespace
+} // namespace mellow::types

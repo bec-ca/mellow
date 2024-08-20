@@ -5,16 +5,17 @@
 #include <variant>
 #include <vector>
 
-#include "bee/error.hpp"
+#include "bee/or_error.hpp"
+#include "yasf/file_path.hpp"
 #include "yasf/serializer.hpp"
 #include "yasf/to_stringable_mixin.hpp"
 
-namespace generated_build_config {
+namespace mellow::generated {
 
 struct Cpp : public yasf::ToStringableMixin<Cpp> {
-  std::string compiler;
-  std::vector<std::string> cpp_flags = {};
-  std::vector<std::string> ld_flags = {};
+  yasf::FilePath compiler;
+  std::vector<std::string> cpp_flags{};
+  std::vector<std::string> ld_flags{};
 
   static bee::OrError<Cpp> of_yasf_value(const yasf::Value::ptr& config_value);
 
@@ -47,6 +48,4 @@ struct Rule : public yasf::ToStringableMixin<Rule> {
   yasf::Value::ptr to_yasf_value() const;
 };
 
-} // namespace generated_build_config
-
-// olint-allow: missing-package-namespace
+} // namespace mellow::generated

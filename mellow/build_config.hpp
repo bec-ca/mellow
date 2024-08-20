@@ -1,14 +1,11 @@
 #pragma once
 
-#include <filesystem>
+#include "build_config.generated.hpp"
 
-#include "generated_build_config.hpp"
-
+#include "bee/file_path.hpp"
 #include "yasf/value.hpp"
 
 namespace mellow {
-
-namespace bc = generated_build_config;
 
 // BuildConfig is a temporary config, system specific required for a build to
 // work. Eg, path to compiler, additional flags for unusual header locations,
@@ -25,13 +22,13 @@ struct BuildConfig {
   static bee::OrError<BuildConfig> of_yasf_value(const yasf::Value::ptr& value);
 
   static bee::OrError<BuildConfig> load_from_file(
-    const std::filesystem::path& filename);
+    const bee::FilePath& filename);
 
-  bee::OrError<> write_to_file(const std::filesystem::path& filename) const;
+  bee::OrError<> write_to_file(const bee::FilePath& filename) const;
 
-  bc::Cpp cpp_config() const;
+  generated::Cpp cpp_config() const;
 
-  std::vector<bc::Rule> rules;
+  std::vector<generated::Rule> rules;
 };
 
 } // namespace mellow

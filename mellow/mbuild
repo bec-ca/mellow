@@ -3,39 +3,63 @@ cpp_library:
   sources: build_command.cpp
   headers: build_command.hpp
   libs:
+    /bee/filesystem
+    /bee/print
     /command/cmd
     /command/command_builder
     /command/file_path
     build_engine
     defaults
+    repo
 
 cpp_library:
   name: build_config
   sources: build_config.cpp
   headers: build_config.hpp
   libs:
-    /bee/file_reader
+    /bee/file_path
     /bee/file_writer
-    /bee/string_util
-    /bee/util
     /yasf/config_parser
     /yasf/value
-    generated_build_config
+    build_config.generated
+
+cpp_library:
+  name: build_config.generated
+  sources: build_config.generated.cpp
+  headers: build_config.generated.hpp
+  libs:
+    /bee/format
+    /bee/or_error
+    /bee/util
+    /yasf/file_path
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/to_stringable_mixin
+
+gen_rule:
+  name: build_config_yasf_codegen
+  binary: /yasf/yasf_compiler
+  flags:
+    compile
+    build_config.yasf
+  data: build_config.yasf
+  outputs:
+    build_config.generated.cpp
+    build_config.generated.hpp
 
 cpp_library:
   name: build_engine
   sources: build_engine.cpp
   headers: build_engine.hpp
   libs:
-    /bee/error
     /bee/file_path
     /bee/file_reader
-    /bee/file_writer
     /bee/filesystem
-    /bee/format_filesystem
-    /bee/format_set
+    /bee/format_optional
     /bee/format_vector
+    /bee/or_error
     /bee/os
+    /bee/print
     /bee/string_util
     /bee/sub_process
     /bee/util
@@ -43,35 +67,49 @@ cpp_library:
     /yasf/cof
     build_config
     build_normalizer
-    build_task
     generate_build_config
-    generated_mbuild_parser
+    mbuild_types.generated
     package_path
+    runable_rule
     task_manager
 
-cpp_binary:
-  name: build_hash_yasf
-  libs: build_hash_yasf_main
-
 cpp_library:
-  name: build_hash_yasf_main
-  sources: build_hash_yasf_main.cpp
+  name: build_hash.generated
+  sources: build_hash.generated.cpp
+  headers: build_hash.generated.hpp
   libs:
-    /yasf/core_types
-    /yasf/generator
-    /yasf/generator_main_lib
+    /bee/format
+    /bee/or_error
+    /bee/util
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/time
+    /yasf/to_stringable_mixin
+
+gen_rule:
+  name: build_hash_yasf_codegen
+  binary: /yasf/yasf_compiler
+  flags:
+    compile
+    build_hash.yasf
+  data: build_hash.yasf
+  outputs:
+    build_hash.generated.cpp
+    build_hash.generated.hpp
 
 cpp_library:
   name: build_normalizer
   sources: build_normalizer.cpp
   headers: build_normalizer.hpp
   libs:
-    /bee/error
     /bee/file_path
     /bee/filesystem
+    /bee/or_error
+    /bee/print
+    /bee/string_util
     /bee/util
-    generated_mbuild_parser
     mbuild_parser
+    mbuild_types.generated
     normalized_rule
     package_path
 
@@ -83,7 +121,7 @@ cpp_library:
     /bee/util
     /yasf/cof
     /yasf/location
-    generated_mbuild_parser
+    mbuild_types.generated
     package_path
     rule_templates
 
@@ -93,10 +131,10 @@ cpp_library:
   headers: build_task.hpp
   libs:
     /bee/file_path
-    /bee/format
     hash_checker
     package_path
     progress_ui
+    runable_rule
     thread_runner
 
 cpp_library:
@@ -106,7 +144,7 @@ cpp_library:
   libs:
     /command/cmd
     /command/command_builder
-    build_config
+    /command/file_path
     generate_build_config
 
 cpp_library:
@@ -124,6 +162,7 @@ cpp_library:
     /bee/filesystem
     /bee/format
     /bee/format_vector
+    /bee/print
     /bee/sub_process
     /command/cmd
     /command/command_builder
@@ -145,46 +184,22 @@ cpp_library:
     /command/command_builder
     mbuild_parser
 
-cpp_binary:
-  name: gen_build_config
-  libs: gen_build_config_main
-
-cpp_library:
-  name: gen_build_config_main
-  sources: gen_build_config_main.cpp
-  libs:
-    /yasf/generator
-    /yasf/generator_main_lib
-
-gen_rule:
-  name: gen_build_hash_yasf
-  binary: build_hash_yasf
-  flags:
-    gen
-    --base-name
-    generated_build_hash
-    --output-dir
-    .
-  outputs:
-    generated_build_hash.cpp
-    generated_build_hash.hpp
-
 cpp_library:
   name: genbuild
   sources: genbuild.cpp
   headers: genbuild.hpp
   libs:
-    /bee/error
+    /bee/file_path
     /bee/file_reader
     /bee/filesystem
-    /bee/format_filesystem
-    /bee/format_set
-    /bee/format_vector
+    /bee/or_error
+    /bee/print
+    /bee/ref
     /bee/sort
     /bee/string_util
     /bee/util
-    generated_mbuild_parser
     mbuild_parser
+    mbuild_types.generated
     package_path
 
 cpp_library:
@@ -194,6 +209,7 @@ cpp_library:
   libs:
     /command/cmd
     /command/command_builder
+    /command/file_path
     genbuild
 
 cpp_library:
@@ -201,121 +217,69 @@ cpp_library:
   sources: generate_build_config.cpp
   headers: generate_build_config.hpp
   libs:
-    /bee/error
+    /bee/file_path
     /bee/file_writer
+    /bee/filesystem
     /bee/format_vector
+    /bee/or_error
+    /bee/print
     /bee/string_util
     /bee/util
     build_config
-    generated_build_config
-
-gen_rule:
-  name: generate_mbuild_parser
-  binary: mbuild_parser_generator
-  flags:
-    gen
-    --base-name
-    generated_mbuild_parser
-    --output-dir
-    .
-  outputs:
-    generated_mbuild_parser.cpp
-    generated_mbuild_parser.hpp
-
-gen_rule:
-  name: generate_yasf_build_config
-  binary: gen_build_config
-  flags:
-    gen
-    --base-name
-    generated_build_config
-    --output-dir
-    .
-  outputs:
-    generated_build_config.cpp
-    generated_build_config.hpp
-
-cpp_library:
-  name: generated_build_config
-  sources: generated_build_config.cpp
-  headers: generated_build_config.hpp
-  libs:
-    /bee/error
-    /bee/format
-    /bee/util
-    /yasf/parser_helpers
-    /yasf/serializer
-    /yasf/to_stringable_mixin
-
-cpp_library:
-  name: generated_build_hash
-  sources: generated_build_hash.cpp
-  headers: generated_build_hash.hpp
-  libs:
-    /bee/error
-    /bee/format
-    /bee/time
-    /bee/util
-    /yasf/parser_helpers
-    /yasf/serializer
-    /yasf/to_stringable_mixin
-
-cpp_library:
-  name: generated_mbuild_parser
-  sources: generated_mbuild_parser.cpp
-  headers: generated_mbuild_parser.hpp
-  libs:
-    /bee/error
-    /bee/file_path
-    /bee/format
-    /bee/util
-    /yasf/file_path_serializer
-    /yasf/parser_helpers
-    /yasf/serializer
-    /yasf/to_stringable_mixin
+    build_config.generated
 
 cpp_library:
   name: hash_checker
   sources: hash_checker.cpp
   headers: hash_checker.hpp
   libs:
-    /bee/error
     /bee/file_path
     /bee/file_reader
-    /bee/file_writer
     /bee/filesystem
     /bee/format_filesystem
+    /bee/or_error
+    /bee/print
     /bee/simple_checksum
     /bee/string_util
     /yasf/cof
-    generated_build_hash
-    package_path
+    build_hash.generated
 
 cpp_library:
   name: mbuild_parser
   sources: mbuild_parser.cpp
   headers: mbuild_parser.hpp
   libs:
-    /bee/error
     /bee/file_path
     /bee/file_reader
     /bee/file_writer
+    /bee/or_error
     /yasf/config_parser
     build_rules
-    generated_mbuild_parser
-
-cpp_binary:
-  name: mbuild_parser_generator
-  libs: mbuild_parser_generator_main
+    mbuild_types.generated
 
 cpp_library:
-  name: mbuild_parser_generator_main
-  sources: mbuild_parser_generator_main.cpp
+  name: mbuild_types.generated
+  sources: mbuild_types.generated.cpp
+  headers: mbuild_types.generated.hpp
   libs:
-    /yasf/core_types
-    /yasf/generator
-    /yasf/generator_main_lib
-    /yasf/record
+    /bee/format
+    /bee/or_error
+    /bee/util
+    /yasf/file_path
+    /yasf/parser_helpers
+    /yasf/serializer
+    /yasf/to_stringable_mixin
+
+gen_rule:
+  name: mbuild_types_yasf_codegen
+  binary: /yasf/yasf_compiler
+  flags:
+    compile
+    mbuild_types.yasf
+  data: mbuild_types.yasf
+  outputs:
+    mbuild_types.generated.cpp
+    mbuild_types.generated.hpp
 
 cpp_binary:
   name: mellow
@@ -346,9 +310,9 @@ cpp_library:
   sources: package_path.cpp
   headers: package_path.hpp
   libs:
-    /bee/error
     /bee/file_path
     /bee/format_vector
+    /bee/or_error
     /bee/string_util
     /bee/util
 
@@ -368,8 +332,18 @@ cpp_library:
   headers: progress_ui.hpp
   libs:
     /bee/fd
+    /bee/print
     /bee/time
     package_path
+
+cpp_library:
+  name: repo
+  sources: repo.cpp
+  headers: repo.hpp
+  libs:
+    /bee/file_path
+    /bee/filesystem
+    /bee/or_error
 
 cpp_library:
   name: rule_templates
@@ -380,11 +354,17 @@ cpp_library:
     package_path
 
 cpp_library:
+  name: runable_rule
+  sources: runable_rule.cpp
+  headers: runable_rule.hpp
+  libs: /bee/or_error
+
+cpp_library:
   name: task_manager
   sources: task_manager.cpp
   headers: task_manager.hpp
   libs:
-    /bee/string_util
+    /bee/print
     build_task
     package_path
 
@@ -393,14 +373,14 @@ cpp_library:
   sources: thread_runner.cpp
   headers: thread_runner.hpp
   libs:
-    /bee/format
+    /bee/or_error
+    /bee/print
     /bee/queue
 
 cpp_test:
   name: thread_runner_test
   sources: thread_runner_test.cpp
   libs:
-    /bee/format
     /bee/testing
     thread_runner
   output: thread_runner_test.out

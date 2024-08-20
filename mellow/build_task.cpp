@@ -1,157 +1,170 @@
 #include "build_task.hpp"
 
-#include <functional>
 #include <memory>
 #include <set>
 #include <string>
 
 #include "hash_checker.hpp"
+#include "package_path.hpp"
+#include "runable_rule.hpp"
 #include "thread_runner.hpp"
 
-#include "bee/format.hpp"
-
-using bee::FilePath;
-using std::function;
-using std::set;
-using std::shared_ptr;
-using std::string;
-
 namespace mellow {
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// BuildTask
+// BuildTaskImpl
 //
 
-BuildTask::BuildTask(
-  const PackagePath& key,
-  FilePath root_build_dir,
-  function<bee::OrError<>()> run,
-  set<FilePath> inputs,
-  set<FilePath> outputs,
-  const string& non_file_inputs_key,
-  const ProgressUI::ptr& progress_ui)
-    : _key(key),
-      _root_build_dir(root_build_dir),
-      _run(std::move(run)),
-      _inputs(std::move(inputs)),
-      _outputs(std::move(outputs)),
-      _non_file_inputs_key(non_file_inputs_key),
-      _progress_ui(progress_ui),
-      _task_progress(progress_ui->add_task(key))
-{}
+HashChecker create_hash_checker(const BuildTask::Args& args)
+{
+  const auto hash_cache_filename =
+    args.key.append_no_sep(".hash").to_filesystem(args.root_build_dir);
+  return HashChecker::create(
+    hash_cache_filename, args.inputs, args.outputs, args.non_file_inputs_key);
+}
+
+struct BuildTaskImpl final : BuildTask,
+                             std::enable_shared_from_this<BuildTaskImpl> {
+ public:
+  BuildTaskImpl(const Args& args, const ProgressUI::ptr& progress_ui)
+      : _key(args.key),
+        _root_build_dir(args.root_build_dir),
+        _run(args.run),
+        _inputs(args.inputs),
+        _outputs(args.outputs),
+        _non_file_inputs_key(args.non_file_inputs_key),
+        _progress_ui(progress_ui),
+        _task_progress(progress_ui->add_task(args.key)),
+        _hash_checker(create_hash_checker(args))
+  {}
+
+  // Getters
+
+  virtual const Status& status() const override { return _status; }
+  const PackagePath& key() const override { return _key; }
+  const std::set<bee::FilePath>& outputs() const override { return _outputs; }
+  const std::set<bee::FilePath>& inputs() const override { return _inputs; }
+
+  // Core methods
+
+  void enqueue_if_runnable(
+    const ThreadRunner::ptr& runner,
+    const bool force_build,
+    const bool force_test) override
+  {
+    if (!is_runnable()) { return; }
+
+    const auto task = shared_from_this();
+    runner->enqueue(
+      [=]() { return task->do_run(force_build, force_test); },
+      [=](bee::OrError<>&& result) {
+        if (result.is_error()) {
+          task->mark_error(
+            bee::Error::fmt("$ failed: $", task->_key, result.error()));
+        } else {
+          task->mark_done(runner, force_build, force_test);
+        }
+      });
+  }
+
+  void clear() override
+  {
+    _dependencies.clear();
+    _dependents.clear();
+  }
+
+ protected:
+  void add_dependent(const ptr& t) override { _dependents.insert(t); }
+  void add_dependency(const ptr& t) override { _dependencies.insert(t); }
+
+ private:
+  void mark_done(
+    const ThreadRunner::ptr& runner,
+    const bool force_build,
+    const bool force_test)
+  {
+    assert(!_status.done);
+    _status.done = true;
+    for (const auto& t : _dependents) {
+      t->enqueue_if_runnable(runner, force_build, force_test);
+    }
+  }
+
+  bool is_runnable() const
+  {
+    for (const auto& dep : _dependencies) {
+      const auto& s = dep->status();
+      if (!s.done || s.error.is_error()) { return false; }
+    }
+    return true;
+  }
+
+  void mark_error(bee::Error&& error)
+  {
+    assert(!_status.done);
+    _status.done = true;
+    _status.error = std::move(error);
+  }
+
+  bool needs_to_run(const bool force_build, const bool force_test)
+  {
+    if (force_build) return true;
+    if (force_test && _run->is_test()) return true;
+    return !_hash_checker.is_up_to_date();
+  }
+
+  bee::OrError<> do_run(const bool force_build, const bool force_test)
+  {
+    _status.started = true;
+    _progress_ui->task_started(_task_progress);
+    auto result = [&]() -> bee::OrError<> {
+      if (needs_to_run(force_build, force_test)) {
+        bail_unit(_run->run());
+      } else {
+        _status.cached = true;
+      }
+      _hash_checker.write_updated_hashes();
+      return bee::ok();
+    }();
+    _progress_ui->task_done(_task_progress, _status.cached);
+
+    return result;
+  }
+
+  const PackagePath _key;
+  const bee::FilePath _root_build_dir;
+  const RunableRule::ptr _run;
+
+  const std::set<bee::FilePath> _inputs;
+  const std::set<bee::FilePath> _outputs;
+  const std::string _non_file_inputs_key;
+
+  const ProgressUI::ptr _progress_ui;
+  const TaskProgress::ptr _task_progress;
+
+  std::set<ptr> _dependents;
+  std::set<ptr> _dependencies;
+
+  HashChecker _hash_checker;
+
+  Status _status;
+};
+
+} // namespace
+
+BuildTask::~BuildTask() {}
 
 BuildTask::ptr BuildTask::create(
-  const BuildTask::Args& args, const ProgressUI::ptr& progress_ui)
+  const Args& args, const ProgressUI::ptr& progress_ui)
 {
-  return make_shared<BuildTask>(
-    args.key,
-    args.root_build_dir,
-    args.run,
-    args.inputs,
-    args.outputs,
-    args.non_file_inputs_key,
-    progress_ui);
+  return make_shared<BuildTaskImpl>(args, progress_ui);
 }
 
-void BuildTask::mark_done(
-  const shared_ptr<ThreadRunner>& runner, bool force_build)
+void BuildTask::add_dependency(const ptr& dependent, const ptr& dependency)
 {
-  assert(!_done);
-  _done = true;
-  auto ptr = shared_from_this();
-  for (const auto& t : (_depended_on)) {
-    t->enqueue_if_runnable(runner, force_build);
-  }
-}
-
-const bee::OrError<>& BuildTask::error() const { return _error; }
-
-bool BuildTask::is_done() const { return _done; }
-
-const PackagePath& BuildTask::key() const { return _key; }
-
-void BuildTask::depends_on(const ptr& dependent, const ptr& depender)
-{
-  depender->add_depended_on(dependent);
-  dependent->add_depends_on(depender);
-}
-
-void BuildTask::mark_error(bee::Error&& error)
-{
-  assert(!_done);
-  _done = true;
-  _error = std::move(error);
-}
-
-bool BuildTask::is_runnable() const
-{
-  for (const auto& dep : _depends_on) {
-    if (!dep->is_done() || dep->error().is_error()) { return false; }
-  }
-  return true;
-}
-
-bee::OrError<> BuildTask::_do_run(bool force_build)
-{
-  _did_start = true;
-  _progress_ui->task_started(_task_progress);
-  bool cached = true;
-  auto result = [&]() -> bee::OrError<> {
-    if (_run != nullptr) {
-      auto hash_cache_filename =
-        _key.append_no_sep(".hash").to_filesystem(_root_build_dir);
-      auto hash_checker = HashChecker::create(
-        hash_cache_filename, _inputs, _outputs, _non_file_inputs_key);
-      if (force_build || !hash_checker.is_up_to_date()) {
-        bail_unit(_run());
-        cached = false;
-      }
-      hash_checker.write_updated_hashes();
-    } else {
-      if (force_build) { cached = false; }
-    }
-    return bee::ok();
-  }();
-  _progress_ui->task_done(_task_progress, cached);
-
-  return result;
-}
-
-void BuildTask::enqueue_if_runnable(
-  const ThreadRunner::ptr& runner, bool force_build)
-{
-  if (!is_runnable()) { return; }
-
-  auto task = shared_from_this();
-  runner->enqueue<bee::OrError<>>(
-    [=]() { return task->_do_run(force_build); },
-    [=](bee::OrError<> result) {
-      if (result.is_error()) {
-        task->mark_error(
-          bee::Error::fmt("$ failed: $", task->_key, result.error()));
-      } else {
-        task->mark_done(runner, force_build);
-      }
-    });
-}
-
-void BuildTask::add_depends_on(ptr task)
-{
-  _depends_on.insert(std::move(task));
-}
-
-void BuildTask::add_depended_on(ptr task)
-{
-  _depended_on.insert(std::move(task));
-}
-
-const set<FilePath> BuildTask::outputs() const { return _outputs; }
-const set<FilePath> BuildTask::inputs() const { return _inputs; }
-
-void BuildTask::clear()
-{
-  _depends_on.clear();
-  _depended_on.clear();
+  dependency->add_dependent(dependent);
+  dependent->add_dependency(dependency);
 }
 
 } // namespace mellow

@@ -1,18 +1,16 @@
 #pragma once
 
-#include <filesystem>
-
-#include "bee/error.hpp"
+#include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
 
 namespace mellow {
 
 struct GenerateBuildConfig {
   struct Args {
-    std::optional<std::string> default_cpp_compiler = std::nullopt;
+    std::optional<bee::FilePath> default_cpp_compiler = std::nullopt;
   };
 
-  static bee::OrError<> generate(
-    const std::filesystem::path& output, const Args& args);
+  static bee::OrError<> generate(const bee::FilePath& output, const Args& args);
 };
 
 } // namespace mellow

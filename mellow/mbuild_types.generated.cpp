@@ -1,17 +1,15 @@
-#include "generated_mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
 
 #include <type_traits>
 
 #include "bee/format.hpp"
 #include "bee/util.hpp"
-#include "yasf/file_path_serializer.hpp"
 #include "yasf/parser_helpers.hpp"
 #include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
 
 using PH = yasf::ParserHelper;
 
-namespace generated_mbuild_parser {
+namespace mellow::types {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Profile
@@ -26,7 +24,7 @@ bee::OrError<Profile> Profile::of_yasf_value(const yasf::Value::ptr& value)
   std::optional<std::string> output_name;
   std::optional<std::vector<std::string>> output_cpp_flags;
   std::optional<std::vector<std::string>> output_ld_flags;
-  std::optional<std::string> output_cpp_compiler;
+  std::optional<yasf::FilePath> output_cpp_compiler;
 
   for (const auto& element : value->list()) {
     if (!element->is_key_value()) {
@@ -57,7 +55,7 @@ bee::OrError<Profile> Profile::of_yasf_value(const yasf::Value::ptr& value)
         return PH::err(
           "Field 'cpp_compiler' is defined more than once", element);
       }
-      bail_assign(output_cpp_compiler, yasf::des<std::string>(kv.value));
+      bail_assign(output_cpp_compiler, yasf::des<yasf::FilePath>(kv.value));
     } else {
       return PH::err("No such field in record of type Profile", element);
     }
@@ -82,16 +80,13 @@ bee::OrError<Profile> Profile::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr Profile::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<std::string>>(cpp_flags), "cpp_flags");
+  PH::push_back_field(fields, yasf::ser(name), "name");
+  PH::push_back_field(fields, yasf::ser(cpp_flags), "cpp_flags");
   if (!ld_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(ld_flags), "ld_flags");
+    PH::push_back_field(fields, yasf::ser(ld_flags), "ld_flags");
   }
   if (cpp_compiler.has_value()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::string>(*cpp_compiler), "cpp_compiler");
+    PH::push_back_field(fields, yasf::ser(*cpp_compiler), "cpp_compiler");
   }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
@@ -174,20 +169,16 @@ bee::OrError<CppBinary> CppBinary::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr CppBinary::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
+  PH::push_back_field(fields, yasf::ser(name), "name");
   if (!sources.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(sources), "sources");
+    PH::push_back_field(fields, yasf::ser(sources), "sources");
   }
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<std::string>>(libs), "libs");
+  PH::push_back_field(fields, yasf::ser(libs), "libs");
   if (!ld_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(ld_flags), "ld_flags");
+    PH::push_back_field(fields, yasf::ser(ld_flags), "ld_flags");
   }
   if (!cpp_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(cpp_flags), "cpp_flags");
+    PH::push_back_field(fields, yasf::ser(cpp_flags), "cpp_flags");
   }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
@@ -278,29 +269,50 @@ bee::OrError<CppLibrary> CppLibrary::of_yasf_value(
 yasf::Value::ptr CppLibrary::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
+  PH::push_back_field(fields, yasf::ser(name), "name");
   if (!sources.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(sources), "sources");
+    PH::push_back_field(fields, yasf::ser(sources), "sources");
   }
   if (!headers.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(headers), "headers");
+    PH::push_back_field(fields, yasf::ser(headers), "headers");
   }
-  if (!libs.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(libs), "libs");
-  }
+  if (!libs.empty()) { PH::push_back_field(fields, yasf::ser(libs), "libs"); }
   if (!ld_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(ld_flags), "ld_flags");
+    PH::push_back_field(fields, yasf::ser(ld_flags), "ld_flags");
   }
   if (!cpp_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(cpp_flags), "cpp_flags");
+    PH::push_back_field(fields, yasf::ser(cpp_flags), "cpp_flags");
   }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// OS
+//
+
+bee::OrError<OS> OS::of_yasf_value(const yasf::Value::ptr& input_value)
+{
+  bail(str_value, yasf::des<std::string>(input_value));
+  if (str_value == "linux") {
+    return linux;
+  } else if (str_value == "macos") {
+    return macos;
+  } else {
+    return PH::err("Unknown enum value", input_value);
+  }
+}
+
+const char* OS::to_string() const
+{
+  switch (_value) {
+  case linux:
+    return "linux";
+  case macos:
+    return "macos";
+  }
+}
+
+yasf::Value::ptr OS::to_yasf_value() const { return yasf::ser(to_string()); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // CppTest
@@ -316,7 +328,7 @@ bee::OrError<CppTest> CppTest::of_yasf_value(const yasf::Value::ptr& value)
   std::optional<std::vector<std::string>> output_sources;
   std::optional<std::vector<std::string>> output_libs;
   std::optional<std::string> output_output;
-  std::optional<std::vector<std::string>> output_os_filter;
+  std::optional<std::vector<OS>> output_os_filter;
 
   for (const auto& element : value->list()) {
     if (!element->is_key_value()) {
@@ -350,8 +362,7 @@ bee::OrError<CppTest> CppTest::of_yasf_value(const yasf::Value::ptr& value)
       if (output_os_filter.has_value()) {
         return PH::err("Field 'os_filter' is defined more than once", element);
       }
-      bail_assign(
-        output_os_filter, yasf::des<std::vector<std::string>>(kv.value));
+      bail_assign(output_os_filter, yasf::des<std::vector<OS>>(kv.value));
     } else {
       return PH::err("No such field in record of type CppTest", element);
     }
@@ -381,17 +392,12 @@ bee::OrError<CppTest> CppTest::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr CppTest::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<std::string>>(sources), "sources");
-  if (!libs.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(libs), "libs");
-  }
-  PH::push_back_field(fields, yasf::ser<std::string>(output), "output");
+  PH::push_back_field(fields, yasf::ser(name), "name");
+  PH::push_back_field(fields, yasf::ser(sources), "sources");
+  if (!libs.empty()) { PH::push_back_field(fields, yasf::ser(libs), "libs"); }
+  PH::push_back_field(fields, yasf::ser(output), "output");
   if (!os_filter.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(os_filter), "os_filter");
+    PH::push_back_field(fields, yasf::ser(os_filter), "os_filter");
   }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
@@ -409,7 +415,9 @@ bee::OrError<GenRule> GenRule::of_yasf_value(const yasf::Value::ptr& value)
   std::optional<std::string> output_name;
   std::optional<std::string> output_binary;
   std::optional<std::vector<std::string>> output_flags;
+  std::optional<std::vector<std::string>> output_data;
   std::optional<std::vector<std::string>> output_outputs;
+  std::optional<bool> output_output_to_src;
 
   for (const auto& element : value->list()) {
     if (!element->is_key_value()) {
@@ -433,12 +441,23 @@ bee::OrError<GenRule> GenRule::of_yasf_value(const yasf::Value::ptr& value)
         return PH::err("Field 'flags' is defined more than once", element);
       }
       bail_assign(output_flags, yasf::des<std::vector<std::string>>(kv.value));
+    } else if (name == "data") {
+      if (output_data.has_value()) {
+        return PH::err("Field 'data' is defined more than once", element);
+      }
+      bail_assign(output_data, yasf::des<std::vector<std::string>>(kv.value));
     } else if (name == "outputs") {
       if (output_outputs.has_value()) {
         return PH::err("Field 'outputs' is defined more than once", element);
       }
       bail_assign(
         output_outputs, yasf::des<std::vector<std::string>>(kv.value));
+    } else if (name == "output_to_src") {
+      if (output_output_to_src.has_value()) {
+        return PH::err(
+          "Field 'output_to_src' is defined more than once", element);
+      }
+      bail_assign(output_output_to_src, PH::to_bool(kv.value));
     } else {
       return PH::err("No such field in record of type GenRule", element);
     }
@@ -451,15 +470,18 @@ bee::OrError<GenRule> GenRule::of_yasf_value(const yasf::Value::ptr& value)
     return PH::err("Field 'binary' not defined", value);
   }
   if (!output_flags.has_value()) { output_flags.emplace(); }
+  if (!output_data.has_value()) { output_data.emplace(); }
   if (!output_outputs.has_value()) {
     return PH::err("Field 'outputs' not defined", value);
   }
-
+  if (!output_output_to_src.has_value()) { output_output_to_src = false; }
   return GenRule{
     .name = std::move(*output_name),
     .binary = std::move(*output_binary),
     .flags = std::move(*output_flags),
+    .data = std::move(*output_data),
     .outputs = std::move(*output_outputs),
+    .output_to_src = std::move(*output_output_to_src),
     .location = value->location(),
   };
 }
@@ -467,14 +489,16 @@ bee::OrError<GenRule> GenRule::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr GenRule::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(fields, yasf::ser<std::string>(binary), "binary");
+  PH::push_back_field(fields, yasf::ser(name), "name");
+  PH::push_back_field(fields, yasf::ser(binary), "binary");
   if (!flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(flags), "flags");
+    PH::push_back_field(fields, yasf::ser(flags), "flags");
   }
-  PH::push_back_field(
-    fields, yasf::ser<std::vector<std::string>>(outputs), "outputs");
+  if (!data.empty()) { PH::push_back_field(fields, yasf::ser(data), "data"); }
+  PH::push_back_field(fields, yasf::ser(outputs), "outputs");
+  if (output_to_src != false) {
+    PH::push_back_field(fields, PH::of_bool(output_to_src), "output_to_src");
+  }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
 
@@ -489,7 +513,7 @@ bee::OrError<SystemLib> SystemLib::of_yasf_value(const yasf::Value::ptr& value)
   }
 
   std::optional<std::string> output_name;
-  std::optional<bee::FilePath> output_command;
+  std::optional<yasf::FilePath> output_command;
   std::optional<std::vector<std::string>> output_flags;
   std::optional<std::vector<std::string>> output_provide_headers;
 
@@ -509,7 +533,7 @@ bee::OrError<SystemLib> SystemLib::of_yasf_value(const yasf::Value::ptr& value)
       if (output_command.has_value()) {
         return PH::err("Field 'command' is defined more than once", element);
       }
-      bail_assign(output_command, yasf::des<bee::FilePath>(kv.value));
+      bail_assign(output_command, yasf::des<yasf::FilePath>(kv.value));
     } else if (name == "flags") {
       if (output_flags.has_value()) {
         return PH::err("Field 'flags' is defined more than once", element);
@@ -550,16 +574,12 @@ bee::OrError<SystemLib> SystemLib::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr SystemLib::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
-  PH::push_back_field(fields, yasf::ser<bee::FilePath>(command), "command");
+  PH::push_back_field(fields, yasf::ser(name), "name");
+  PH::push_back_field(fields, yasf::ser(command), "command");
   if (!flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(flags), "flags");
+    PH::push_back_field(fields, yasf::ser(flags), "flags");
   }
-  PH::push_back_field(
-    fields,
-    yasf::ser<std::vector<std::string>>(provide_headers),
-    "provide_headers");
+  PH::push_back_field(fields, yasf::ser(provide_headers), "provide_headers");
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
 
@@ -621,13 +641,11 @@ bee::OrError<ExternalPackage> ExternalPackage::of_yasf_value(
 yasf::Value::ptr ExternalPackage::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(name), "name");
+  PH::push_back_field(fields, yasf::ser(name), "name");
   if (source.has_value()) {
-    PH::push_back_field(fields, yasf::ser<std::string>(*source), "source");
+    PH::push_back_field(fields, yasf::ser(*source), "source");
   }
-  if (url.has_value()) {
-    PH::push_back_field(fields, yasf::ser<std::string>(*url), "url");
-  }
+  if (url.has_value()) { PH::push_back_field(fields, yasf::ser(*url), "url"); }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
 
@@ -698,6 +716,4 @@ yasf::Value::ptr Rule::to_yasf_value() const
   });
 }
 
-} // namespace generated_mbuild_parser
-
-// olint-allow: missing-package-namespace
+} // namespace mellow::types

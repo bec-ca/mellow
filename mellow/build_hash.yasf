@@ -1,0 +1,13 @@
+ns mellow
+
+record FileHash {
+  name str;
+  hash str;
+  mtime time;
+}
+
+record TaskHash {
+  inputs FileHash vector;
+  outputs FileHash vector;
+  flags_hash str;
+}

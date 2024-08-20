@@ -2,14 +2,14 @@
 
 #include <map>
 
-#include "generated_build_hash.hpp"
+#include "build_hash.generated.hpp"
 
-#include "bee/error.hpp"
 #include "bee/file_path.hpp"
 #include "bee/file_reader.hpp"
-#include "bee/file_writer.hpp"
 #include "bee/filesystem.hpp"
 #include "bee/format_filesystem.hpp"
+#include "bee/or_error.hpp"
+#include "bee/print.hpp"
 #include "bee/simple_checksum.hpp"
 #include "bee/string_util.hpp"
 #include "yasf/cof.hpp"
@@ -21,8 +21,6 @@ using std::set;
 using std::string;
 using std::vector;
 
-namespace gbh = generated_build_hash;
-
 namespace mellow {
 namespace {
 
@@ -31,32 +29,31 @@ bee::OrError<string> hash_file(const FilePath& filename)
   char buffer[2048];
   bail(file, bee::FileReader::open(filename));
   SimpleChecksum h;
-  while (!file->is_eof()) {
+  while (true) {
     bail(
       bytes_read,
       file->read(reinterpret_cast<std::byte*>(buffer), sizeof(buffer)));
+    if (bytes_read == 0) { break; }
     h.add_string(buffer, bytes_read);
   }
   return h.hex();
 }
 
-bee::OrError<gbh::TaskHash> read_task_hash(const FilePath& filename)
+bee::OrError<TaskHash> read_task_hash(const FilePath& filename)
 {
-  bail(content, bee::FileReader::read_file(filename));
-  return yasf::Cof::deserialize<gbh::TaskHash>(content);
+  return yasf::Cof::deserialize_file<TaskHash>(filename);
 }
 
 bee::OrError<> write_task_hash(
-  const FilePath& filename, const gbh::TaskHash& task_hash)
+  const FilePath& filename, const TaskHash& task_hash)
 {
-  auto content = yasf::Cof::serialize(task_hash);
   bail_unit(bee::FileSystem::mkdirs(filename.parent()));
-  return bee::FileWriter::save_file(filename, content);
+  return yasf::Cof::serialize_file(filename, task_hash);
 }
 
-vector<gbh::FileHash> compute_hashes(const set<FilePath>& files)
+vector<FileHash> compute_hashes(const set<FilePath>& files)
 {
-  vector<gbh::FileHash> output;
+  vector<FileHash> output;
   for (const auto& filename : files) {
     auto hash = hash_file(filename).value_or("");
     auto mtime = bee::FileSystem::file_mtime(filename).value_or(Time());
@@ -70,12 +67,12 @@ vector<gbh::FileHash> compute_hashes(const set<FilePath>& files)
 }
 
 bool did_any_file_change_or_update_timestamps(
-  vector<gbh::FileHash>& existing_hashes, const set<FilePath>& files)
+  vector<FileHash>& existing_hashes, const set<FilePath>& files)
 {
   if (existing_hashes.size() != files.size()) { return true; }
 
   for (auto& cached : existing_hashes) {
-    FilePath name = FilePath::of_string(cached.name);
+    FilePath name = FilePath(cached.name);
     auto it = files.find(name);
     if (it == files.end()) { return true; }
 
@@ -157,7 +154,7 @@ void HashChecker::write_updated_hashes()
     auto current_output_hashes = compute_hashes(_outputs);
     auto current_input_hashes = compute_hashes(_inputs);
 
-    return gbh::TaskHash{
+    return TaskHash{
       .inputs = current_input_hashes,
       .outputs = current_output_hashes,
       .flags_hash = _non_file_inputs_key,

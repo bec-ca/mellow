@@ -30,7 +30,7 @@ OrError<> run_format(
       "The modes inplace and check-only can't be enabled at the same time");
   }
   bool has_filename = filename_opt.has_value() && filename_opt != "-";
-  auto filename = FilePath::of_string(has_filename ? *filename_opt : "");
+  auto filename = FilePath(has_filename ? *filename_opt : "");
 
   if (inplace && !has_filename) {
     return Error("Filename required for inplace mode");
@@ -46,23 +46,23 @@ OrError<> run_format(
   for (auto& rule : rules) {
     std::visit(
       []<class T>(T& rule) {
-        if constexpr (is_same_v<T, gmp::Profile>) {
-        } else if constexpr (is_same_v<T, gmp::SystemLib>) {
-        } else if constexpr (is_same_v<T, gmp::ExternalPackage>) {
-        } else if constexpr (is_same_v<T, gmp::CppBinary>) {
+        if constexpr (is_same_v<T, types::Profile>) {
+        } else if constexpr (is_same_v<T, types::SystemLib>) {
+        } else if constexpr (is_same_v<T, types::ExternalPackage>) {
+        } else if constexpr (is_same_v<T, types::CppBinary>) {
           bee::sort(rule.sources);
           bee::sort(rule.libs);
-        } else if constexpr (is_same_v<T, gmp::CppLibrary>) {
+        } else if constexpr (is_same_v<T, types::CppLibrary>) {
           bee::sort(rule.sources);
           bee::sort(rule.headers);
           bee::sort(rule.libs);
-        } else if constexpr (is_same_v<T, gmp::CppTest>) {
+        } else if constexpr (is_same_v<T, types::CppTest>) {
           bee::sort(rule.sources);
           bee::sort(rule.libs);
-        } else if constexpr (is_same_v<T, gmp::GenRule>) {
+        } else if constexpr (is_same_v<T, types::GenRule>) {
           bee::sort(rule.outputs);
         } else {
-          static_assert(bee::always_false_v<T> && "non exhaustive visit");
+          static_assert(bee::always_false<T> && "non exhaustive visit");
         }
       },
       rule.value);
@@ -75,7 +75,7 @@ OrError<> run_format(
       return Error("Format diff found");
     }
   } else if (inplace) {
-    bail_unit(bee::FileWriter::save_file(filename, formated_content));
+    bail_unit(bee::FileWriter::write_file(filename, formated_content));
   } else {
     std::cout << formated_content;
   }
@@ -90,11 +90,11 @@ using command::CommandBuilder;
 
 Cmd FormatCommand::command()
 {
-  using namespace command::flags;
+  namespace f = command::flags;
   auto builder = CommandBuilder("Format mbuild file");
   auto inplace = builder.no_arg("--inplace");
   auto check_only = builder.no_arg("--check-only");
-  auto filename = builder.anon(string_flag, "mbuild-file");
+  auto filename = builder.anon(f::String, "mbuild-file");
   return builder.run(
     [=]() { return run_format(*inplace, *filename, *check_only); });
 }

@@ -15,7 +15,7 @@ namespace {
 
 TEST(basic)
 {
-  auto root_package_dir = FilePath::of_string(".");
+  auto root_package_dir = FilePath(".");
   must(package_path, PackagePath::of_string("/foo"));
   P("package_dir:$ package_path:$", root_package_dir, package_path);
   auto to_filesystem = package_path.to_filesystem(root_package_dir);
@@ -28,8 +28,7 @@ TEST(basic)
 TEST(of_filesystem)
 {
   auto of_filesystem = [](const string& dir, const string& tail) {
-    return PackagePath::of_filesystem(
-      FilePath::of_string(dir), FilePath::of_string(tail));
+    return PackagePath::of_filesystem(FilePath(dir), FilePath(tail));
   };
 
   PRINT_EXPR(of_filesystem(".", "./foo.out"));
@@ -46,7 +45,7 @@ TEST(to_filesystem)
 {
   auto to_filesystem = [](const string& path, const string& dir) -> FilePath {
     must(pkg, PackagePath::of_string(path));
-    return pkg.to_filesystem(FilePath::of_string(dir));
+    return pkg.to_filesystem(FilePath(dir));
   };
   PRINT_EXPR(to_filesystem("/foo/bar", "foo"));
   PRINT_EXPR(to_filesystem("/", "foo"));
@@ -66,15 +65,30 @@ TEST(of_string)
 
 TEST(append)
 {
-  auto append = [](const string& path, const string& tail) -> PackagePath {
+  auto t = [](const char* path, const char* tail) {
     must(pkg, PackagePath::of_string(path));
-    return pkg / tail;
+    auto out = bee::try_with([&]() { return pkg / tail; });
+    P("'$' '$' -> '$'", path, tail, out);
   };
-  PRINT_EXPR(append("/foo/bar", "foo"));
-  PRINT_EXPR(append("/foo/bar", "/foo"));
-  PRINT_EXPR(append("/foo/bar", "./foo"));
-  PRINT_EXPR(append("/foo/bar", "././foo"));
-  PRINT_EXPR(append("/foo/bar", "../foo")); // TODO: this shouldn't be allowed
+  t("/foo/bar", "foo");
+  t("/foo/bar", "/foo");
+  t("/foo/bar", "./foo");
+  t("/foo/bar", "././foo");
+  t("/foo/bar", "../foo");
+}
+
+TEST(append_no_sep)
+{
+  auto t = [](const char* path, const char* tail) {
+    must(pkg, PackagePath::of_string(path));
+    auto out = pkg.append_no_sep(tail);
+    P("'$' '$' -> '$'", path, tail, out);
+  };
+  t("/foo/bar", "foo");
+  t("/foo/bar", "/foo");
+  t("/foo/bar", "./foo");
+  t("/foo/bar", "././foo");
+  t("/foo/bar", "../foo");
 }
 
 TEST(relative_to)
@@ -94,7 +108,7 @@ TEST(remove_suffix)
 {
   auto remove_suffix = [](const string& s1, const string& s2) {
     must(p1, PackagePath::of_string(s1));
-    auto p2 = bee::FilePath::of_string(s2);
+    auto p2 = bee::FilePath(s2);
     return p1.remove_suffix(p2);
   };
   PRINT_EXPR(remove_suffix("/foo/bar", "/other/foo/bar"));

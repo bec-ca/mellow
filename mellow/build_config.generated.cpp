@@ -1,4 +1,4 @@
-#include "generated_build_config.hpp"
+#include "build_config.generated.hpp"
 
 #include <type_traits>
 
@@ -6,11 +6,10 @@
 #include "bee/util.hpp"
 #include "yasf/parser_helpers.hpp"
 #include "yasf/serializer.hpp"
-#include "yasf/to_stringable_mixin.hpp"
 
 using PH = yasf::ParserHelper;
 
-namespace generated_build_config {
+namespace mellow::generated {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Cpp
@@ -22,7 +21,7 @@ bee::OrError<Cpp> Cpp::of_yasf_value(const yasf::Value::ptr& value)
     return PH::err("Record expected a list, but got something else", value);
   }
 
-  std::optional<std::string> output_compiler;
+  std::optional<yasf::FilePath> output_compiler;
   std::optional<std::vector<std::string>> output_cpp_flags;
   std::optional<std::vector<std::string>> output_ld_flags;
 
@@ -37,7 +36,7 @@ bee::OrError<Cpp> Cpp::of_yasf_value(const yasf::Value::ptr& value)
       if (output_compiler.has_value()) {
         return PH::err("Field 'compiler' is defined more than once", element);
       }
-      bail_assign(output_compiler, yasf::des<std::string>(kv.value));
+      bail_assign(output_compiler, yasf::des<yasf::FilePath>(kv.value));
     } else if (name == "cpp_flags") {
       if (output_cpp_flags.has_value()) {
         return PH::err("Field 'cpp_flags' is defined more than once", element);
@@ -70,14 +69,12 @@ bee::OrError<Cpp> Cpp::of_yasf_value(const yasf::Value::ptr& value)
 yasf::Value::ptr Cpp::to_yasf_value() const
 {
   std::vector<yasf::Value::ptr> fields;
-  PH::push_back_field(fields, yasf::ser<std::string>(compiler), "compiler");
+  PH::push_back_field(fields, yasf::ser(compiler), "compiler");
   if (!cpp_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(cpp_flags), "cpp_flags");
+    PH::push_back_field(fields, yasf::ser(cpp_flags), "cpp_flags");
   }
   if (!ld_flags.empty()) {
-    PH::push_back_field(
-      fields, yasf::ser<std::vector<std::string>>(ld_flags), "ld_flags");
+    PH::push_back_field(fields, yasf::ser(ld_flags), "ld_flags");
   }
   return yasf::Value::create_list(std::move(fields), std::nullopt);
 }
@@ -119,6 +116,4 @@ yasf::Value::ptr Rule::to_yasf_value() const
   });
 }
 
-} // namespace generated_build_config
-
-// olint-allow: missing-package-namespace
+} // namespace mellow::generated

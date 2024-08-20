@@ -1,0 +1,13 @@
+# Issues/wish list
+
+* A failed tasks seems to destroy the cache for that task
+* We should be able to have more than one cached output per target
+* Maybe "task" is not a very good name
+* There should be a way to make a build fail early
+* vim gets lost when a test raises
+* vim sometimes takes a failure to the makefile line, which is not helpful
+* We should have a continuous background build
+* We should be able to build only a specific target
+* Specifying yasf code generation should be easier
+
+

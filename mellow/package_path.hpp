@@ -1,22 +1,23 @@
 #pragma once
 
 #include <compare>
-#include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "bee/error.hpp"
 #include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
 
 namespace mellow {
 
 struct PackagePath {
-  PackagePath append_no_sep(const std::string& s) const;
+  PackagePath append_no_sep(const std::string_view& s) const;
 
-  PackagePath append(const std::string& tail) const;
-  void append_inplace(const std::string& tail);
+  PackagePath append(const std::string_view& tail) const;
+  void append_inplace(const std::string_view& tail);
 
-  PackagePath operator/(const std::string& tail) const;
+  PackagePath operator/(const std::string_view& tail) const;
+  PackagePath operator+(const std::string_view& tail) const;
 
   std::strong_ordering operator<=>(const PackagePath& other) const = default;
 
@@ -26,12 +27,14 @@ struct PackagePath {
 
   std::string to_string() const;
 
-  static bee::OrError<PackagePath> of_string(const std::string& str);
+  static bee::OrError<PackagePath> of_string(const std::string_view& str);
 
   static bee::OrError<PackagePath> of_filesystem(
     const bee::FilePath& root_package_dir, const bee::FilePath& path);
 
   const std::string& last() const;
+
+  bool is_absolute() const;
 
   bool is_child_of(const PackagePath& parent) const;
 

@@ -3,17 +3,15 @@
 #include <string>
 #include <vector>
 
-#include "generated_mbuild_parser.hpp"
+#include "mbuild_types.generated.hpp"
 
-#include "bee/error.hpp"
 #include "bee/file_path.hpp"
+#include "bee/or_error.hpp"
 
 namespace mellow {
 
-namespace gmp = generated_mbuild_parser;
-
 struct MbuildParser {
-  using Rules = std::vector<gmp::Rule>;
+  using Rules = std::vector<types::Rule>;
 
   static bee::OrError<Rules> from_string(
     const bee::FilePath& filename, const std::string& content);

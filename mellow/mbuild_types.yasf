@@ -1,0 +1,84 @@
+ns mellow.types
+
+record Profile {
+  attr location;
+
+  name str;
+  cpp_flags str vector;
+  ld_flags str vector optional;
+  cpp_compiler file_path optional;
+}
+
+record CppBinary {
+  attr location;
+
+  name str;
+  sources str vector optional;
+  libs str vector;
+  ld_flags str vector optional;
+  cpp_flags str vector optional;
+}
+
+record CppLibrary {
+  attr location;
+
+  name str;
+  sources str vector optional;
+  headers str vector optional;
+  libs str vector optional;
+  ld_flags str vector optional;
+  cpp_flags str vector optional;
+}
+
+enum OS {
+  linux;
+  macos;
+}
+
+record CppTest {
+  attr location;
+
+  name str;
+  sources str vector;
+  libs str vector optional;
+  output str;
+  os_filter OS vector optional;
+}
+
+record GenRule {
+  attr location;
+
+  name str;
+  binary str;
+  flags str vector optional;
+  data str vector optional;
+  outputs str vector;
+  output_to_src bool optional;
+}
+
+record SystemLib {
+  attr location;
+
+  name str;
+  command file_path;
+  flags str vector optional;
+  provide_headers str vector;
+}
+
+record ExternalPackage {
+  attr location;
+
+  name str;
+  source str optional;
+  url str optional;
+}
+
+variant Rule {
+  profile Profile;
+  cpp_binary CppBinary;
+  cpp_library CppLibrary;
+  cpp_test CppTest;
+  gen_rule GenRule;
+  system_lib SystemLib;
+  external_package ExternalPackage;
+}
