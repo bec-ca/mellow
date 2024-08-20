@@ -2,7 +2,7 @@ BUILD_DIR ?= ./build/bootstrap
 EP = ./build/external-packages
 
 CXXFLAGS+=-std=c++23 -O3 -iquote . -I${EP}
-LDFLAGS+=-lpthread -pthread
+LDFLAGS+=-lpthread -pthread -lm -lstdc++
 
 DIRS=mellow $(EP)/bee $(EP)/yasf $(EP)/command $(EP)/diffo $(EP)/tokenizer $(EP)/exc $(EP)/clang_format
 SOURCES=$(shell find $(DIRS) | grep '\.cpp$$' | grep -v test | grep -v main | grep -v 'sys\.[hc]pp') mellow/mellow_main.cpp
