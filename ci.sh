@@ -2,7 +2,7 @@
 
 export CXX=clang-18
 export CLANG_FORMAT=clang-format-18
-export CXXFLAGS="-lstdc++ -lm"
+export LDLAGS="-lstdc++ -lm"
 
 export MELLOW=build/mellow.bootstrap
 
@@ -14,7 +14,7 @@ function build_bootstrap() {
   rm -rf $bootstrap_dir
   mkdir $bootstrap_dir
   pushd $bootstrap_dir
-  curl -s -L "https://github.com/bec-ca/mellow/releases/download/v0.0.4/mellow-with-deps-v0.0.4.tar.gz" -o mellow-with-deps.tar.gz
+  curl -s -L "https://github.com/bec-ca/mellow/releases/download/v0.0.5/mellow-with-deps-v0.0.5.tar.gz" -o mellow-with-deps.tar.gz
   tar -xf mellow-with-deps.tar.gz
   popd
 
